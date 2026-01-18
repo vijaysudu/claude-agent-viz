@@ -9,7 +9,16 @@ from pathlib import Path
 from typing import Callable
 
 from .discovery.parser import ParsedSession, ParsedToolUse, ParsedMessage, parse_session
+from .discovery.config_parser import discover_all_configs, get_claude_dir
 from .store.models import Session, ToolUse, ToolStatus, ConversationMessage, MessageRole
+from .store.config_models import (
+    Skill,
+    Hook,
+    Command,
+    Agent,
+    MCPServer,
+    ConfigCollection,
+)
 
 
 def get_current_session_ids() -> dict[str, str]:
@@ -144,6 +153,17 @@ class AppState:
     spawn_mode: str = "external"  # "external" or "embedded" (embedded requires compatible textual-terminal)
     show_active_only: bool = True  # Filter to show only active sessions
 
+    # Config items
+    skills: list[Skill] = field(default_factory=list)
+    hooks: list[Hook] = field(default_factory=list)
+    commands: list[Command] = field(default_factory=list)
+    agents: list[Agent] = field(default_factory=list)
+    mcp_servers: list[MCPServer] = field(default_factory=list)
+
+    # Config selection state
+    selected_config_type: str | None = None
+    selected_config_id: str | None = None
+
     # Track spawned process PIDs for cleanup
     _spawned_pids: list[int] = field(default_factory=list)
 
@@ -187,6 +207,101 @@ class AppState:
         """Select a tool by ID."""
         self.selected_tool_id = tool_id
         self.notify_update()
+
+    def load_configs(self, claude_dir: Path | None = None) -> None:
+        """Load all configuration items from Claude's config directory.
+
+        Args:
+            claude_dir: Path to Claude config directory (defaults to ~/.claude).
+        """
+        if claude_dir is None:
+            claude_dir = get_claude_dir()
+
+        configs = discover_all_configs(claude_dir)
+        self.skills = configs.skills
+        self.hooks = configs.hooks
+        self.commands = configs.commands
+        self.agents = configs.agents
+        self.mcp_servers = configs.mcp_servers
+        self.notify_update()
+
+    def select_config_item(self, item_type: str, item_id: str) -> None:
+        """Select a config item by type and ID.
+
+        Args:
+            item_type: The type of config item (skill, hook, command, agent, mcp_server).
+            item_id: The unique ID of the item.
+        """
+        self.selected_config_type = item_type
+        self.selected_config_id = item_id
+        # Clear session/tool selection when selecting config
+        self.selected_session_id = None
+        self.selected_tool_id = None
+        self.notify_update()
+
+    def clear_config_selection(self) -> None:
+        """Clear the current config selection."""
+        self.selected_config_type = None
+        self.selected_config_id = None
+        self.notify_update()
+
+    def get_selected_config(self) -> Skill | Hook | Command | Agent | MCPServer | None:
+        """Get the currently selected config item.
+
+        Returns:
+            The selected config item or None if nothing is selected.
+        """
+        if not self.selected_config_type or not self.selected_config_id:
+            return None
+
+        items_map = {
+            "skill": self.skills,
+            "hook": self.hooks,
+            "command": self.commands,
+            "agent": self.agents,
+            "mcp_server": self.mcp_servers,
+        }
+
+        items = items_map.get(self.selected_config_type)
+        if not items:
+            return None
+
+        # Find by ID based on type
+        for item in items:
+            if self._get_config_item_id(self.selected_config_type, item) == self.selected_config_id:
+                return item
+
+        return None
+
+    def _get_config_item_id(
+        self, item_type: str, item: Skill | Hook | Command | Agent | MCPServer
+    ) -> str:
+        """Get the unique ID for a config item.
+
+        Args:
+            item_type: The type of config item.
+            item: The config item.
+
+        Returns:
+            Unique string ID.
+        """
+        if item_type == "skill" and isinstance(item, Skill):
+            if item.is_from_plugin and item.plugin_name:
+                return f"{item.plugin_name}:{item.name}"
+            return item.name
+        elif item_type == "hook" and isinstance(item, Hook):
+            if item.matcher:
+                return f"{item.hook_type}:{item.matcher}"
+            return f"{item.hook_type}:{hash(item.command) % 10000}"
+        elif item_type == "command" and isinstance(item, Command):
+            return item.name
+        elif item_type == "agent" and isinstance(item, Agent):
+            if item.is_from_plugin and item.plugin_name:
+                return f"{item.plugin_name}:{item.name}"
+            return item.name
+        elif item_type == "mcp_server" and isinstance(item, MCPServer):
+            return item.name
+        return str(id(item))
 
     def toggle_spawn_mode(self) -> str:
         """Toggle between embedded and external spawn modes."""

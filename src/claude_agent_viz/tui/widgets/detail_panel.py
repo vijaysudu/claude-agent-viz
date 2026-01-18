@@ -13,6 +13,7 @@ from textual.message import Message
 from textual.widgets import Static, RichLog, Input
 
 from ...store.models import ToolUse, ToolStatus, Session, ConversationMessage, MessageRole
+from ...store.config_models import Skill, Hook, Command, Agent, MCPServer
 
 
 # Status display
@@ -128,7 +129,6 @@ class DetailPanel(Container):
         content.write(Text.assemble(("c", "bold cyan"), (" - Resume selected session", "")))
         content.write(Text.assemble(("k", "bold cyan"), (" - Kill selected session", "")))
         content.write(Text.assemble(("r", "bold cyan"), (" - Refresh sessions", "")))
-        content.write(Text.assemble(("t", "bold cyan"), (" - Toggle spawn mode", "")))
         content.write(Text.assemble(("ESC", "bold cyan"), (" - Go back / Deselect", "")))
         content.write(Text.assemble(("q", "bold cyan"), (" - Quit", "")))
 
@@ -514,3 +514,265 @@ class DetailPanel(Container):
 
         else:
             content.write(result)
+
+    def show_skill(self, skill: Skill) -> None:
+        """Display skill details."""
+        self._current_tool = None
+        self._current_session = None
+        self.remove_class("session-view")
+
+        header = self.query_one("#detail-header", Static)
+        content = self.query_one("#detail-content", RichLog)
+        content.clear()
+
+        # Header
+        icon = "" if skill.is_from_plugin else ""
+        header.update(f"{icon} Skill: {skill.display_name}")
+
+        # Skill info
+        content.write(Text("Skill Information", style="bold cyan"))
+        content.write("")
+        content.write(Text.assemble(("Name: ", "bold"), (skill.name, "cyan")))
+
+        if skill.is_from_plugin and skill.plugin_name:
+            content.write(Text.assemble(("Plugin: ", "bold"), (skill.plugin_name, "magenta")))
+
+        if skill.description:
+            content.write(Text.assemble(("Description: ", "bold"), (skill.description, "")))
+
+        content.write(Text.assemble(("File: ", "bold"), (str(skill.file_path), "dim")))
+
+        content.write("")
+        content.write(Text("─" * 40, style="dim"))
+        content.write("")
+
+        # Skill content (markdown)
+        content.write(Text("Content", style="bold cyan"))
+        content.write("")
+
+        try:
+            syntax = Syntax(
+                skill.content,
+                "markdown",
+                theme="monokai",
+                line_numbers=True,
+                word_wrap=True,
+            )
+            content.write(syntax)
+        except Exception:
+            content.write(skill.content)
+
+    def show_hook(self, hook: Hook) -> None:
+        """Display hook details."""
+        self._current_tool = None
+        self._current_session = None
+        self.remove_class("session-view")
+
+        header = self.query_one("#detail-header", Static)
+        content = self.query_one("#detail-content", RichLog)
+        content.clear()
+
+        # Header
+        header.update(f" Hook: {hook.display_name}")
+
+        # Hook info
+        content.write(Text("Hook Information", style="bold cyan"))
+        content.write("")
+        content.write(Text.assemble(("Type: ", "bold"), (hook.hook_type, "yellow")))
+
+        if hook.matcher:
+            content.write(Text.assemble(("Matcher: ", "bold"), (hook.matcher, "magenta")))
+
+        if hook.timeout:
+            content.write(Text.assemble(("Timeout: ", "bold"), (f"{hook.timeout}ms", "")))
+
+        content.write("")
+        content.write(Text("─" * 40, style="dim"))
+        content.write("")
+
+        # Command
+        content.write(Text("Command", style="bold cyan"))
+        content.write("")
+
+        try:
+            syntax = Syntax(
+                hook.command,
+                "bash",
+                theme="monokai",
+                word_wrap=True,
+            )
+            content.write(syntax)
+        except Exception:
+            content.write(Text(f"$ {hook.command}", style="green"))
+
+    def show_command(self, command: Command) -> None:
+        """Display command details."""
+        self._current_tool = None
+        self._current_session = None
+        self.remove_class("session-view")
+
+        header = self.query_one("#detail-header", Static)
+        content = self.query_one("#detail-content", RichLog)
+        content.clear()
+
+        # Header
+        header.update(f" Command: /{command.name}")
+
+        # Command info
+        content.write(Text("Command Information", style="bold cyan"))
+        content.write("")
+        content.write(Text.assemble(("Name: ", "bold"), (f"/{command.name}", "cyan")))
+
+        if command.description:
+            content.write(Text.assemble(("Description: ", "bold"), (command.description, "")))
+
+        content.write(Text.assemble(("File: ", "bold"), (str(command.file_path), "dim")))
+
+        content.write("")
+        content.write(Text("─" * 40, style="dim"))
+        content.write("")
+
+        # Command content (markdown)
+        content.write(Text("Content", style="bold cyan"))
+        content.write("")
+
+        try:
+            syntax = Syntax(
+                command.content,
+                "markdown",
+                theme="monokai",
+                line_numbers=True,
+                word_wrap=True,
+            )
+            content.write(syntax)
+        except Exception:
+            content.write(command.content)
+
+    def show_agent(self, agent: Agent) -> None:
+        """Display agent details."""
+        self._current_tool = None
+        self._current_session = None
+        self.remove_class("session-view")
+
+        header = self.query_one("#detail-header", Static)
+        content = self.query_one("#detail-content", RichLog)
+        content.clear()
+
+        # Header
+        icon = "" if agent.is_from_plugin else ""
+        header.update(f"{icon} Agent: {agent.display_name}")
+
+        # Agent info
+        content.write(Text("Agent Information", style="bold cyan"))
+        content.write("")
+        content.write(Text.assemble(("Name: ", "bold"), (agent.name, "cyan")))
+
+        if agent.is_from_plugin and agent.plugin_name:
+            content.write(Text.assemble(("Plugin: ", "bold"), (agent.plugin_name, "magenta")))
+
+        if agent.description:
+            content.write(Text.assemble(("Description: ", "bold"), (agent.description, "")))
+
+        content.write(Text.assemble(("Model: ", "bold"), (agent.model, "yellow")))
+
+        if agent.color:
+            # Show the color name, but use a safe style (don't style with the color itself
+            # since it might not be a valid Rich color name like 'orange')
+            content.write(Text.assemble(("Color: ", "bold"), (agent.color, "")))
+
+        content.write(Text.assemble(("File: ", "bold"), (str(agent.file_path), "dim")))
+
+        content.write("")
+        content.write(Text("─" * 40, style="dim"))
+        content.write("")
+
+        # Tools
+        if agent.tools:
+            content.write(Text("Available Tools", style="bold cyan"))
+            content.write("")
+            for tool in agent.tools:
+                content.write(Text.assemble(("  • ", "dim"), (tool, "green")))
+            content.write("")
+            content.write(Text("─" * 40, style="dim"))
+            content.write("")
+
+        # Agent content (markdown)
+        content.write(Text("Content", style="bold cyan"))
+        content.write("")
+
+        try:
+            syntax = Syntax(
+                agent.content,
+                "markdown",
+                theme="monokai",
+                line_numbers=True,
+                word_wrap=True,
+            )
+            content.write(syntax)
+        except Exception:
+            content.write(agent.content)
+
+    def show_mcp_server(self, server: MCPServer) -> None:
+        """Display MCP server details."""
+        self._current_tool = None
+        self._current_session = None
+        self.remove_class("session-view")
+
+        header = self.query_one("#detail-header", Static)
+        content = self.query_one("#detail-content", RichLog)
+        content.clear()
+
+        # Header
+        header.update(f" MCP Server: {server.name}")
+
+        # Server info
+        content.write(Text("MCP Server Information", style="bold cyan"))
+        content.write("")
+        content.write(Text.assemble(("Name: ", "bold"), (server.name, "green")))
+        content.write(Text.assemble(("Command: ", "bold"), (server.command, "cyan")))
+
+        content.write("")
+        content.write(Text("─" * 40, style="dim"))
+        content.write("")
+
+        # Full command
+        content.write(Text("Full Command", style="bold cyan"))
+        content.write("")
+        content.write(Text(f"$ {server.full_command}", style="green"))
+
+        # Args
+        if server.args:
+            content.write("")
+            content.write(Text("─" * 40, style="dim"))
+            content.write("")
+            content.write(Text("Arguments", style="bold cyan"))
+            content.write("")
+            for i, arg in enumerate(server.args):
+                content.write(Text.assemble((f"  [{i}] ", "dim"), (arg, "")))
+
+        # Environment variables
+        if server.env:
+            content.write("")
+            content.write(Text("─" * 40, style="dim"))
+            content.write("")
+            content.write(Text("Environment Variables", style="bold cyan"))
+            content.write("")
+            for key, value in server.env.items():
+                # Mask sensitive values
+                if any(s in key.lower() for s in ["key", "token", "secret", "password"]):
+                    display_value = "***" + value[-4:] if len(value) > 4 else "****"
+                else:
+                    display_value = value
+                content.write(Text.assemble(
+                    ("  ", ""),
+                    (key, "yellow"),
+                    ("=", "dim"),
+                    (display_value, ""),
+                ))
+
+        # Working directory
+        if server.cwd:
+            content.write("")
+            content.write(Text("─" * 40, style="dim"))
+            content.write("")
+            content.write(Text.assemble(("Working Directory: ", "bold"), (server.cwd, "dim")))

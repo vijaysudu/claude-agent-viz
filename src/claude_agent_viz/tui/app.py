@@ -8,14 +8,21 @@ from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import Header, Footer, Static
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
+from textual.widgets import Header, Footer, Static, TabbedContent, TabPane
 
 from .widgets.session_list import SessionList
 from .widgets.tool_list import ToolList
 from .widgets.detail_panel import DetailPanel
-from .screens.embedded_terminal_screen import EmbeddedTerminalScreen, TERMINAL_AVAILABLE
+from .widgets.config_list import ConfigList
+from .widgets.skill_list import SkillList
+from .widgets.hook_list import HookList
+from .widgets.command_list import CommandList
+from .widgets.agent_list import AgentList
+from .widgets.mcp_server_list import MCPServerList
+from .screens.new_session_screen import NewSessionScreen
 from ..state import AppState
+from ..store.config_models import Skill, Hook, Command, Agent, MCPServer
 from ..spawner.terminal import spawn_session
 
 
@@ -35,7 +42,7 @@ class ClaudeAgentVizApp(App):
     }
 
     .sidebar {
-        width: 30;
+        width: 35;
         height: 100%;
     }
 
@@ -66,12 +73,32 @@ class ClaudeAgentVizApp(App):
         color: $text;
     }
 
-    .mode-external {
-        color: $warning;
+    /* Tabbed sidebar styling */
+    .sidebar TabbedContent {
+        height: 100%;
     }
 
-    .mode-embedded {
-        color: $success;
+    .sidebar ContentSwitcher {
+        height: 1fr;
+    }
+
+    .sidebar TabPane {
+        padding: 0;
+        height: 100%;
+    }
+
+    #sessions-tab {
+        height: 100%;
+    }
+
+    #config-tab {
+        height: 100%;
+        padding: 0;
+    }
+
+    #config-scroll {
+        height: 100%;
+        scrollbar-gutter: stable;
     }
     """
 
@@ -80,7 +107,6 @@ class ClaudeAgentVizApp(App):
         Binding("n", "new_session", "New Session", show=True),
         Binding("c", "resume_session", "Resume", show=True),
         Binding("k", "kill_session", "Kill Session", show=True),
-        Binding("t", "toggle_spawn_mode", "Toggle Mode", show=True),
         Binding("r", "refresh", "Refresh", show=True),
         Binding("escape", "back_to_session", "Back", show=True),
         Binding("question_mark", "help", "Help", show=True, key_display="?"),
@@ -113,15 +139,27 @@ class ClaudeAgentVizApp(App):
 
         with Vertical(id="main-layout"):
             with Horizontal(id="content-area"):
-                # Sidebar with sessions and tools
+                # Sidebar with tabbed navigation
                 with Vertical(classes="sidebar"):
-                    with Container(classes="sessions-panel"):
-                        yield Static(" Sessions", classes="panel-title")
-                        yield SessionList(id="session-list")
+                    with TabbedContent():
+                        # Sessions tab
+                        with TabPane("Sessions", id="sessions-tab"):
+                            with Container(classes="sessions-panel"):
+                                yield Static(" Sessions", classes="panel-title")
+                                yield SessionList(id="session-list")
 
-                    with Container(classes="tools-panel"):
-                        yield Static(" Tools", classes="panel-title")
-                        yield ToolList(id="tool-list")
+                            with Container(classes="tools-panel"):
+                                yield Static(" Tools", classes="panel-title")
+                                yield ToolList(id="tool-list")
+
+                        # Config tab
+                        with TabPane("Config", id="config-tab"):
+                            with VerticalScroll(id="config-scroll"):
+                                yield SkillList(id="skill-list")
+                                yield HookList(id="hook-list")
+                                yield CommandList(id="command-list")
+                                yield AgentList(id="agent-list")
+                                yield MCPServerList(id="mcp-server-list")
 
                 # Main content area
                 with Container(classes="main-content"):
@@ -143,6 +181,9 @@ class ClaudeAgentVizApp(App):
         elif self.sessions_dir:
             self._load_sessions()
             self._start_watcher()
+
+        # Load Claude configuration
+        self._load_configs()
 
     def on_unmount(self) -> None:
         """Handle application unmount."""
@@ -227,14 +268,8 @@ class ClaudeAgentVizApp(App):
 
     def _get_status_text(self) -> str:
         """Get the status bar text."""
-        mode = self.state.spawn_mode
-        mode_icon = "" if mode == "embedded" else ""
-        mode_class = "mode-embedded" if mode == "embedded" else "mode-external"
-
-        # Active session count
         active_count = len([s for s in self.state.sessions if s.is_active])
-
-        return f"[{mode_class}]{mode_icon} {mode.title()}[/] | Active Sessions: {active_count}"
+        return f" Active Sessions: {active_count}"
 
     def _update_status(self) -> None:
         """Update the status indicator."""
@@ -388,10 +423,65 @@ class ClaudeAgentVizApp(App):
         except Exception:
             pass
 
+    def _load_configs(self) -> None:
+        """Load Claude configuration items."""
+        self.state.load_configs()
+        self._update_config_lists()
+
+    def _update_config_lists(self) -> None:
+        """Update all config list widgets."""
+        try:
+            skill_list = self.query_one("#skill-list", SkillList)
+            skill_list.set_items(self.state.skills)
+        except Exception:
+            pass
+
+        try:
+            hook_list = self.query_one("#hook-list", HookList)
+            hook_list.set_items(self.state.hooks)
+        except Exception:
+            pass
+
+        try:
+            command_list = self.query_one("#command-list", CommandList)
+            command_list.set_items(self.state.commands)
+        except Exception:
+            pass
+
+        try:
+            agent_list = self.query_one("#agent-list", AgentList)
+            agent_list.set_items(self.state.agents)
+        except Exception:
+            pass
+
+        try:
+            mcp_server_list = self.query_one("#mcp-server-list", MCPServerList)
+            mcp_server_list.set_items(self.state.mcp_servers)
+        except Exception:
+            pass
+
+    def _show_config_details(self) -> None:
+        """Show selected config item details in the detail panel."""
+        detail_panel = self.query_one("#detail-panel", DetailPanel)
+        item = self.state.get_selected_config()
+
+        if isinstance(item, Skill):
+            detail_panel.show_skill(item)
+        elif isinstance(item, Hook):
+            detail_panel.show_hook(item)
+        elif isinstance(item, Command):
+            detail_panel.show_command(item)
+        elif isinstance(item, Agent):
+            detail_panel.show_agent(item)
+        elif isinstance(item, MCPServer):
+            detail_panel.show_mcp_server(item)
+
     def on_session_list_session_selected(
         self, event: SessionList.SessionSelected
     ) -> None:
         """Handle session selection."""
+        # Clear config selection when selecting a session
+        self.state.clear_config_selection()
         self.state.select_session(event.session_id)
         self._update_tool_list()
         # Show session info in detail panel
@@ -401,6 +491,11 @@ class ClaudeAgentVizApp(App):
         """Handle tool selection."""
         self.state.select_tool(event.tool_use_id)
         self._update_detail_panel()
+
+    def on_config_list_item_selected(self, event: ConfigList.ItemSelected) -> None:
+        """Handle config item selection."""
+        self.state.select_config_item(event.item_type, event.item_id)
+        self._show_config_details()
 
     def on_detail_panel_reply_submitted(
         self, event: DetailPanel.ReplySubmitted
@@ -413,55 +508,35 @@ class ClaudeAgentVizApp(App):
         # Get the project path for the session
         cwd = session.project_path or os.getcwd()
 
-        if self.state.spawn_mode == "embedded" and TERMINAL_AVAILABLE:
-            # Open embedded terminal with resume session
-            self.push_screen(EmbeddedTerminalScreen(
-                session_id=event.session_id,
-                cwd=cwd,
-            ))
-        else:
-            # Open external terminal with resume session
-            from ..spawner.terminal import spawn_resume_session
-            result = spawn_resume_session(
-                cwd=cwd,
-                session_id=event.session_id,
-            )
+        from ..spawner.terminal import spawn_resume_session
+        result = spawn_resume_session(
+            cwd=cwd,
+            session_id=event.session_id,
+        )
 
-            if result.success:
-                self.notify("Opening terminal to resume session...", severity="information")
-            else:
-                self.notify(f"Failed to resume: {result.error}", severity="error")
+        if result.success:
+            self.notify("Opening terminal to resume session...", severity="information")
+        else:
+            self.notify(f"Failed to resume: {result.error}", severity="error")
 
     def action_new_session(self) -> None:
         """Spawn a new Claude session."""
-        if self.state.spawn_mode == "embedded" and TERMINAL_AVAILABLE:
-            # Open embedded terminal screen
-            self.push_screen(EmbeddedTerminalScreen(cwd=os.getcwd()))
-        else:
-            # Spawn external terminal
-            result = spawn_session(os.getcwd())
-            if result.success:
-                self.notify("New Claude session started", severity="information")
-            else:
-                self.notify(
-                    f"Failed to start session: {result.error}",
-                    severity="error",
-                )
+        # Show dialog to get project directory
+        self.push_screen(NewSessionScreen(default_path=os.getcwd()), self._on_new_session_path)
 
-    def action_toggle_spawn_mode(self) -> None:
-        """Toggle between embedded and external spawn modes."""
-        new_mode = self.state.toggle_spawn_mode()
-        if new_mode == "embedded" and not TERMINAL_AVAILABLE:
-            self.notify(
-                "Embedded mode unavailable (textual-terminal incompatible). Using external.",
-                severity="warning",
-            )
-            # Revert to external since embedded isn't available
-            self.state.toggle_spawn_mode()
+    def _on_new_session_path(self, path: str | None) -> None:
+        """Handle the result from NewSessionScreen."""
+        if path is None:
+            # User cancelled
+            return
+
+        result = spawn_session(path)
+        if result.success:
+            self.notify(f"New Claude session started in {path}", severity="information")
         else:
             self.notify(
-                f"Spawn mode: {new_mode.title()}",
-                severity="information",
+                f"Failed to start session: {result.error}",
+                severity="error",
             )
 
     def action_kill_session(self) -> None:
@@ -505,7 +580,7 @@ class ClaudeAgentVizApp(App):
                 self.notify("No running Claude sessions found", severity="information")
 
     def action_back_to_session(self) -> None:
-        """Go back: tool view → session view → base state."""
+        """Go back: tool view → session view → config view → base state."""
         if self.state.selected_tool_id:
             # From tool view, go back to session view
             self.state.selected_tool_id = None
@@ -514,6 +589,10 @@ class ClaudeAgentVizApp(App):
             # From session view, go back to base state (nothing selected)
             self.state.selected_session_id = None
             self._update_tool_list()  # Clear tools list
+            self._show_welcome()
+        elif self.state.selected_config_id:
+            # From config view, go back to base state
+            self.state.clear_config_selection()
             self._show_welcome()
 
     def action_refresh(self) -> None:
@@ -534,24 +613,16 @@ class ClaudeAgentVizApp(App):
         # Get the project path for the session
         cwd = session.project_path or os.getcwd()
 
-        if self.state.spawn_mode == "embedded" and TERMINAL_AVAILABLE:
-            # Open embedded terminal with resume session
-            self.push_screen(EmbeddedTerminalScreen(
-                session_id=session.session_id,
-                cwd=cwd,
-            ))
-        else:
-            # Open external terminal with resume session
-            from ..spawner.terminal import spawn_resume_session
-            result = spawn_resume_session(
-                cwd=cwd,
-                session_id=session.session_id,
-            )
+        from ..spawner.terminal import spawn_resume_session
+        result = spawn_resume_session(
+            cwd=cwd,
+            session_id=session.session_id,
+        )
 
-            if result.success:
-                self.notify("Opening terminal to resume session...", severity="information")
-            else:
-                self.notify(f"Failed to resume: {result.error}", severity="error")
+        if result.success:
+            self.notify("Opening terminal to resume session...", severity="information")
+        else:
+            self.notify(f"Failed to resume: {result.error}", severity="error")
 
     def action_help(self) -> None:
         """Show help information."""
@@ -562,22 +633,13 @@ class ClaudeAgentVizApp(App):
   [cyan]n[/cyan] - Start new Claude session
   [cyan]c[/cyan] - Resume selected session
   [cyan]k[/cyan] - Kill selected session
-  [cyan]t[/cyan] - Toggle spawn mode (embedded/external)
   [cyan]r[/cyan] - Refresh sessions
   [cyan]ESC[/cyan] - Back to session view
   [cyan]q[/cyan] - Quit
   [cyan]?[/cyan] - Show this help
 
 [bold]Active Sessions:[/bold]
-  Sessions with a running Claude process are shown
-
-[bold]Spawn Modes:[/bold]
-  [green]Embedded[/green] - Run Claude inside this TUI
-  [yellow]External[/yellow] - Open Claude in a new terminal window
-
-[bold]Terminal Controls:[/bold]
-  [cyan]ESC[/cyan] - Graceful exit (sends /exit)
-  [cyan]Ctrl+C x2[/cyan] - Force kill session
-  [cyan]Ctrl+Q[/cyan] - Immediate force quit
+  Sessions with a running Claude process are shown with a green indicator.
+  New sessions and resumes open in your preferred terminal emulator.
 """
         self.notify(help_text, timeout=10)
