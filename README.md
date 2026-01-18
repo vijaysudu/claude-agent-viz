@@ -1,6 +1,6 @@
-# Claude Agent TUI Visualizer
+# Claude Agent TUI
 
-A terminal UI for visualizing and interacting with Claude Code agent sessions.
+A terminal user interface for visualizing and managing Claude Code agent sessions.
 
 ## Features
 
@@ -60,13 +60,13 @@ claude-tui --version
 
 ## Terminal Controls (Embedded Mode)
 
-When running Claude in embedded mode:
+When running Claude in an embedded terminal (new or resumed session):
 
 | Key | Action |
 |-----|--------|
-| `ESC` | Graceful exit (sends `/exit` to Claude) |
-| `Ctrl+C` x2 | Force kill session |
-| `Ctrl+Q` | Immediate force quit |
+| `ESC` | Graceful exit (sends `/exit` command to Claude) |
+| `Ctrl+C` | Send interrupt to Claude (press twice within 2s to force kill) |
+| `Ctrl+Q` | Immediate force quit (SIGTERM) |
 
 ## Layout
 
@@ -108,11 +108,16 @@ Config tab shows collapsible sections:
 
 ## Requirements
 
-- Python 3.10+
-- Textual >= 0.50.0
-- textual-terminal >= 0.3.0
-- Rich >= 13.0.0
-- watchdog >= 4.0.0
+### Runtime Dependencies
+- **Python 3.10+**
+- **Textual >= 0.50.0** - Terminal UI framework
+- **textual-terminal >= 0.3.0** - Embedded terminal widget for PTY sessions
+- **Rich >= 13.0.0** - Text formatting and syntax highlighting
+- **watchdog >= 4.0.0** - File system monitoring for live session updates
+
+### System Dependencies
+- **claude** CLI must be installed and available in PATH
+- macOS/Linux (process management uses `ps`, `lsof`, `pgrep`)
 
 ## Project Structure
 
