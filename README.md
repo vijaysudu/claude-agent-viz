@@ -2,6 +2,16 @@
 
 A terminal user interface for visualizing and managing Claude Code agent sessions.
 
+## Screenshots
+
+**Sessions Tab** - Browse sessions, inspect tool uses, and view conversation history:
+
+![Sessions Tab](docs/sessions-tab.png)
+
+**Config Tab** - View skills, hooks, commands, agents, and MCP servers:
+
+![Config Tab](docs/config-tab.png)
+
 ## Features
 
 ### Session Management
@@ -67,44 +77,6 @@ When running Claude in an embedded terminal (new or resumed session):
 | `ESC` | Graceful exit (sends `/exit` command to Claude) |
 | `Ctrl+C` | Send interrupt to Claude (press twice within 2s to force kill) |
 | `Ctrl+Q` | Immediate force quit (SIGTERM) |
-
-## Layout
-
-The interface features a tabbed sidebar with Sessions and Config tabs:
-
-```
-+------------------------+----------------------------------------+
-| [Sessions] [Config]    | Detail Panel                           |
-+------------------------+  (Session info, tool output, or        |
-| Sessions               |   config details)                      |
-|  > session-1 (active)  |                                        |
-|    session-2           |                                        |
-+------------------------+                                        |
-| Tools                  |                                        |
-|  > Read: file.py       |                                        |
-|    Edit: app.py        |                                        |
-|    Bash: npm run       |                                        |
-+------------------------+----------------------------------------+
-| Status Bar                                                      |
-+----------------------------------------------------------------+
-```
-
-Config tab shows collapsible sections:
-```
-+------------------------+
-| [Sessions] [Config]    |
-+------------------------+
-| ▼ Skills (3)           |
-|   custom-skill-1       |
-|   custom-skill-2       |
-| ▶ Hooks (2)            |
-| ▶ Commands (5)         |
-| ▼ Agents (4)           |
-|   code-reviewer        |
-|   test-runner          |
-| ▶ MCP Servers (1)      |
-+------------------------+
-```
 
 ## Requirements
 
