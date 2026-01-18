@@ -4,12 +4,21 @@ A terminal UI for visualizing and interacting with Claude Code agent sessions.
 
 ## Features
 
+### Session Management
 - **Session Browser**: View all Claude sessions from `~/.claude/projects`
 - **Tool Inspector**: See every tool use (Read, Write, Edit, Bash, etc.) with full input/output
 - **Active Session Detection**: Highlights sessions with running Claude processes
 - **Spawn New Sessions**: Start Claude in embedded terminal or external window
 - **Resume Sessions**: Continue existing sessions with `claude --resume`
 - **Kill Sessions**: Terminate running Claude processes
+- **Live Updates**: Real-time file watching updates sessions as they change
+
+### Configuration Browser
+- **Skills**: View custom skills defined in `~/.claude/skills/`
+- **Hooks**: Inspect lifecycle hooks from Claude configuration
+- **Commands**: Browse slash commands and their definitions
+- **Agents**: View agent configurations with their tools and settings
+- **MCP Servers**: See configured Model Context Protocol servers
 
 ## Installation
 
@@ -41,21 +50,13 @@ claude-viz --version
 
 | Key | Action |
 |-----|--------|
-| `n` | New session (uses current spawn mode) |
-| `c` | Resume selected session in embedded terminal |
+| `n` | New session (spawns new Claude session) |
+| `c` | Resume selected session |
 | `k` | Kill selected session |
-| `t` | Toggle spawn mode (embedded/external) |
 | `r` | Refresh sessions |
-| `ESC` | Back to session view (from tool detail) |
+| `ESC` | Back navigation (tool → session → base) |
 | `q` | Quit |
 | `?` | Show help |
-
-## Spawn Modes
-
-- **External** (default): Opens Claude in a new terminal window
-- **Embedded**: Runs Claude inside the visualizer's TUI
-
-Toggle between modes with `t`.
 
 ## Terminal Controls (Embedded Mode)
 
@@ -69,28 +70,76 @@ When running Claude in embedded mode:
 
 ## Layout
 
+The interface features a tabbed sidebar with Sessions and Config tabs:
+
 ```
-+------------------+----------------------------------------+
-| Sessions         | Detail Panel                           |
-|  > session-1     |  (Session info or tool output)         |
-|    session-2     |                                        |
-|                  |                                        |
-+------------------+                                        |
-| Tools            |                                        |
-|  > Read: file.py |                                        |
-|    Edit: app.py  |                                        |
-|    Bash: npm run |                                        |
-+------------------+----------------------------------------+
-| Status: External | Active Sessions: 2                     |
-+------------------+----------------------------------------+
++------------------------+----------------------------------------+
+| [Sessions] [Config]    | Detail Panel                           |
++------------------------+  (Session info, tool output, or        |
+| Sessions               |   config details)                      |
+|  > session-1 (active)  |                                        |
+|    session-2           |                                        |
++------------------------+                                        |
+| Tools                  |                                        |
+|  > Read: file.py       |                                        |
+|    Edit: app.py        |                                        |
+|    Bash: npm run       |                                        |
++------------------------+----------------------------------------+
+| Status Bar                                                      |
++----------------------------------------------------------------+
+```
+
+Config tab shows collapsible sections:
+```
++------------------------+
+| [Sessions] [Config]    |
++------------------------+
+| ▼ Skills (3)           |
+|   custom-skill-1       |
+|   custom-skill-2       |
+| ▶ Hooks (2)            |
+| ▶ Commands (5)         |
+| ▼ Agents (4)           |
+|   code-reviewer        |
+|   test-runner          |
+| ▶ MCP Servers (1)      |
++------------------------+
 ```
 
 ## Requirements
 
 - Python 3.10+
 - Textual >= 0.50.0
+- textual-terminal >= 0.3.0
 - Rich >= 13.0.0
 - watchdog >= 4.0.0
+
+## Project Structure
+
+```
+src/claude_agent_viz/
+├── __init__.py          # Package init with version
+├── __main__.py          # CLI entry point
+├── cli.py               # CLI wrapper
+├── state.py             # Central state management
+├── process.py           # Process detection and management
+├── demo.py              # Demo data generation
+├── discovery/           # Session and config discovery
+│   ├── parser.py        # JSONL session parsing
+│   ├── watcher.py       # File system watching
+│   └── config_parser.py # Config file parsing
+├── spawner/             # Session spawning
+│   └── terminal.py      # Terminal integration
+├── store/               # Data models
+│   ├── models.py        # Session, ToolUse models
+│   └── config_models.py # Skill, Hook, Agent models
+└── tui/                 # Terminal UI
+    ├── app.py           # Main Textual application
+    ├── screens/         # Full-screen views
+    └── widgets/         # UI components
+```
+
+See `CLAUDE.md` files in each directory for detailed documentation.
 
 ## Development
 
