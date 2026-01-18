@@ -35,7 +35,8 @@ class SessionWatcher:
         """Start watching for file changes."""
         handler = _SessionEventHandler(self.on_change, self.on_new)
         self._observer = Observer()
-        self._observer.schedule(handler, str(self.directory), recursive=False)
+        # Watch recursively since sessions are in project subdirectories
+        self._observer.schedule(handler, str(self.directory), recursive=True)
         self._observer.start()
 
     def stop(self) -> None:

@@ -102,6 +102,7 @@ class ClaudeAgentVizApp(App):
         self.sessions_dir = sessions_dir
         self.demo_mode = demo_mode
         self.state = AppState()
+        self._watcher = None
 
         # Register state update callback
         self.state.add_update_listener(self._on_state_update)
@@ -141,6 +142,71 @@ class ClaudeAgentVizApp(App):
             self._load_demo_data()
         elif self.sessions_dir:
             self._load_sessions()
+            self._start_watcher()
+
+    def on_unmount(self) -> None:
+        """Handle application unmount."""
+        self._stop_watcher()
+
+    def _start_watcher(self) -> None:
+        """Start watching for new session files."""
+        if not self.sessions_dir or self.demo_mode:
+            return
+
+        try:
+            from ..discovery.watcher import SessionWatcher
+
+            self._watcher = SessionWatcher(
+                directory=self.sessions_dir,
+                on_change=self._on_session_file_changed,
+                on_new=self._on_session_file_created,
+            )
+            self._watcher.start()
+        except ImportError:
+            # watchdog not installed
+            pass
+
+    def _stop_watcher(self) -> None:
+        """Stop the file watcher."""
+        if self._watcher:
+            self._watcher.stop()
+            self._watcher = None
+
+    def _on_session_file_changed(self, path: Path) -> None:
+        """Handle session file modification."""
+        # Skip subagent files
+        if "subagents" in str(path):
+            return
+        # Reload the session and refresh UI
+        self.call_from_thread(self._reload_session, path)
+
+    def _on_session_file_created(self, path: Path) -> None:
+        """Handle new session file creation."""
+        # Skip subagent files
+        if "subagents" in str(path):
+            return
+        # Load the new session and refresh UI
+        self.call_from_thread(self._load_new_session, path)
+
+    def _reload_session(self, path: Path) -> None:
+        """Reload a session from file (called from main thread)."""
+        from ..state import get_active_claude_directories
+
+        active_dirs = get_active_claude_directories()
+        self.state.load_session(path, active_dirs)
+        self._fix_active_session_detection(active_dirs)
+        self._update_session_list()
+        self._update_status()
+
+    def _load_new_session(self, path: Path) -> None:
+        """Load a new session file (called from main thread)."""
+        from ..state import get_active_claude_directories
+
+        active_dirs = get_active_claude_directories()
+        self.state.load_session(path, active_dirs)
+        self._fix_active_session_detection(active_dirs)
+        self._update_session_list()
+        self._update_status()
 
     def _get_status_text(self) -> str:
         """Get the status bar text."""
@@ -188,10 +254,11 @@ class ClaudeAgentVizApp(App):
         self._update_session_list()
 
     def _fix_active_session_detection(self, active_directories: set[str]) -> None:
-        """Ensure only the most recent session per active directory is marked active.
+        """Ensure only the currently running session per active directory is marked active.
 
         Multiple sessions can share the same project path, but only one Claude
-        process can run per directory at a time - it's always the most recent session.
+        process can run per directory at a time - it's the one with the most
+        recently modified session file (the actively running session).
         """
         from pathlib import Path
 
@@ -215,12 +282,19 @@ class ClaudeAgentVizApp(App):
                 except (OSError, ValueError):
                     continue
 
-        # For each path group, only keep the most recent session as active
+        # For each path group, only keep the session with most recently modified file as active
         for path, sessions in sessions_by_path.items():
             if len(sessions) > 1:
-                # Sort by start_time descending (most recent first)
-                sessions.sort(key=lambda s: s.start_time or "", reverse=True)
-                # Mark all but the first (most recent) as inactive
+                # Sort by file modification time (most recent first)
+                # The actively running session will have the most recently written file
+                def get_mtime(s):
+                    try:
+                        return s.session_path.stat().st_mtime
+                    except (OSError, AttributeError):
+                        return 0
+
+                sessions.sort(key=get_mtime, reverse=True)
+                # Mark all but the first (most recently modified) as inactive
                 for session in sessions[1:]:
                     session.is_active = False
 
