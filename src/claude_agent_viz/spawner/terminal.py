@@ -148,6 +148,111 @@ def spawn_session(cwd: str, terminal: str | None = None) -> SpawnResult:
         )
 
 
+def spawn_resume_session(
+    cwd: str,
+    session_id: str,
+    terminal: str | None = None,
+) -> SpawnResult:
+    """Spawn a Claude resume session in an external terminal.
+
+    Args:
+        cwd: Working directory for the session.
+        session_id: The session ID to resume.
+        terminal: Terminal emulator to use (auto-detect if None).
+
+    Returns:
+        SpawnResult indicating success or failure.
+    """
+    # Find claude executable
+    claude_path = shutil.which("claude")
+    if not claude_path:
+        return SpawnResult(
+            success=False,
+            error="'claude' command not found in PATH",
+        )
+
+    # Auto-detect terminal if not specified
+    if terminal is None:
+        available = get_available_terminals()
+        if not available:
+            return SpawnResult(
+                success=False,
+                error="No supported terminal emulator found",
+            )
+        terminal = available[0]
+
+    # Build the command
+    claude_cmd = f"claude --resume {session_id}"
+
+    try:
+        if terminal == "Terminal.app" or (sys.platform == "darwin" and terminal is None):
+            # macOS Terminal.app
+            script = f'tell application "Terminal" to do script "cd {cwd} && {claude_cmd}"'
+            subprocess.Popen(["osascript", "-e", script])
+
+        elif terminal == "iterm2":
+            # iTerm2
+            script = f'''
+            tell application "iTerm"
+                create window with default profile
+                tell current session of current window
+                    write text "cd {cwd} && {claude_cmd}"
+                end tell
+            end tell
+            '''
+            subprocess.Popen(["osascript", "-e", script])
+
+        elif terminal == "wezterm":
+            subprocess.Popen(
+                ["wezterm", "start", "--cwd", cwd, "--", "sh", "-c", claude_cmd],
+                start_new_session=True,
+            )
+
+        elif terminal == "kitty":
+            subprocess.Popen(
+                ["kitty", "--directory", cwd, "sh", "-c", claude_cmd],
+                start_new_session=True,
+            )
+
+        elif terminal == "alacritty":
+            subprocess.Popen(
+                ["alacritty", "--working-directory", cwd, "-e", "sh", "-c", claude_cmd],
+                start_new_session=True,
+            )
+
+        elif terminal == "gnome-terminal":
+            subprocess.Popen(
+                ["gnome-terminal", f"--working-directory={cwd}", "--", "sh", "-c", claude_cmd],
+                start_new_session=True,
+            )
+
+        elif terminal == "konsole":
+            subprocess.Popen(
+                ["konsole", "--workdir", cwd, "-e", "sh", "-c", claude_cmd],
+                start_new_session=True,
+            )
+
+        elif terminal == "xterm":
+            subprocess.Popen(
+                ["xterm", "-e", f"cd {cwd} && {claude_cmd}"],
+                start_new_session=True,
+            )
+
+        else:
+            return SpawnResult(
+                success=False,
+                error=f"Unsupported terminal: {terminal}",
+            )
+
+        return SpawnResult(success=True)
+
+    except Exception as e:
+        return SpawnResult(
+            success=False,
+            error=str(e),
+        )
+
+
 def spawn_embedded(cwd: str) -> SpawnResult:
     """Spawn a Claude session for embedded terminal use.
 

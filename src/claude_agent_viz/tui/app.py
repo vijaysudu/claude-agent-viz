@@ -388,13 +388,17 @@ class ClaudeAgentVizApp(App):
         # Get the project path for the session
         cwd = session.project_path or os.getcwd()
 
-        # Open terminal screen with the initial message
-        from .screens.resume_terminal_screen import ResumeTerminalScreen
-        self.push_screen(ResumeTerminalScreen(
-            session_id=event.session_id,
+        # Open external terminal with resume session
+        from ..spawner.terminal import spawn_resume_session
+        result = spawn_resume_session(
             cwd=cwd,
-            initial_message=event.message,
-        ))
+            session_id=event.session_id,
+        )
+
+        if result.success:
+            self.notify("Opening terminal to resume session...", severity="information")
+        else:
+            self.notify(f"Failed to resume: {result.error}", severity="error")
 
     def action_new_session(self) -> None:
         """Spawn a new Claude session."""

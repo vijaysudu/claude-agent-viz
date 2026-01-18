@@ -101,7 +101,7 @@ class DetailPanel(Container):
         """Compose the widget with persistent children."""
         yield Static("Select a session or tool", id="detail-header")
         yield RichLog(highlight=True, markup=True, wrap=True, id="detail-content")
-        yield Input(placeholder="Type a message to continue this session... (Enter to send)", id="reply-input")
+        yield Input(placeholder="Press Enter to resume this session in a new terminal", id="reply-input")
 
     def show_tool(self, tool: ToolUse | None) -> None:
         """Display tool details."""
