@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -19,6 +18,8 @@ from .store.config_models import (
     MCPServer,
     ConfigCollection,
 )
+from .process import find_claude_processes
+from .constants import MAX_HISTORY_LINES
 
 
 def get_current_session_ids() -> dict[str, str]:
@@ -37,11 +38,9 @@ def get_current_session_ids() -> dict[str, str]:
         return project_sessions
 
     try:
-        # Read last 100 lines (should be enough to find recent sessions)
         with open(history_path, "r", encoding="utf-8") as f:
-            # Read all lines and get last 100
             lines = f.readlines()
-            recent_lines = lines[-100:] if len(lines) > 100 else lines
+            recent_lines = lines[-MAX_HISTORY_LINES:] if len(lines) > MAX_HISTORY_LINES else lines
 
         # Process in order - later entries override earlier ones
         for line in recent_lines:
@@ -68,68 +67,18 @@ def get_current_session_ids() -> dict[str, str]:
 def get_active_claude_processes() -> dict[str, list[int]]:
     """Get working directories and PIDs of all running Claude processes.
 
-    Uses pgrep to find Claude processes and lsof to get their working directories.
+    Uses the shared process detection from process.py module.
 
     Returns:
         Dict mapping directory paths to list of Claude process PIDs in that directory.
     """
     active_processes: dict[str, list[int]] = {}
 
-    try:
-        # Use pgrep to find Claude process PIDs
-        result = subprocess.run(
-            ["pgrep", "-f", "claude"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-
-        if result.returncode != 0:
-            return active_processes
-
-        pids = [p.strip() for p in result.stdout.strip().split('\n') if p.strip()]
-
-        for pid in pids:
-            # Filter out non-claude processes (grep, python, claude-tui, etc.)
-            try:
-                ps_result = subprocess.run(
-                    ["ps", "-p", pid, "-o", "args="],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                cmd = ps_result.stdout.strip()
-                # Only match actual claude command, not claude-tui or scripts
-                if not cmd or 'claude-tui' in cmd or 'python' in cmd or 'grep' in cmd:
-                    continue
-                if not (cmd == 'claude' or cmd.startswith('claude ') or '/claude' in cmd):
-                    continue
-            except subprocess.SubprocessError:
-                continue
-
-            # Get working directory using lsof
-            try:
-                lsof_result = subprocess.run(
-                    ["lsof", "-p", pid],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-
-                for line in lsof_result.stdout.split('\n'):
-                    if ' cwd ' in line:
-                        parts = line.split()
-                        if len(parts) >= 9:
-                            cwd_path = parts[-1]
-                            if cwd_path not in active_processes:
-                                active_processes[cwd_path] = []
-                            active_processes[cwd_path].append(int(pid))
-                        break
-            except (subprocess.TimeoutExpired, subprocess.SubprocessError, ValueError):
-                continue
-
-    except (subprocess.TimeoutExpired, subprocess.SubprocessError, FileNotFoundError):
-        pass
+    for proc in find_claude_processes():
+        if proc.cwd:
+            if proc.cwd not in active_processes:
+                active_processes[proc.cwd] = []
+            active_processes[proc.cwd].append(proc.pid)
 
     return active_processes
 
@@ -266,42 +215,12 @@ class AppState:
         if not items:
             return None
 
-        # Find by ID based on type
+        # Find by ID - all config items now have an `id` property
         for item in items:
-            if self._get_config_item_id(self.selected_config_type, item) == self.selected_config_id:
+            if item.id == self.selected_config_id:
                 return item
 
         return None
-
-    def _get_config_item_id(
-        self, item_type: str, item: Skill | Hook | Command | Agent | MCPServer
-    ) -> str:
-        """Get the unique ID for a config item.
-
-        Args:
-            item_type: The type of config item.
-            item: The config item.
-
-        Returns:
-            Unique string ID.
-        """
-        if item_type == "skill" and isinstance(item, Skill):
-            if item.is_from_plugin and item.plugin_name:
-                return f"{item.plugin_name}:{item.name}"
-            return item.name
-        elif item_type == "hook" and isinstance(item, Hook):
-            if item.matcher:
-                return f"{item.hook_type}:{item.matcher}"
-            return f"{item.hook_type}:{hash(item.command) % 10000}"
-        elif item_type == "command" and isinstance(item, Command):
-            return item.name
-        elif item_type == "agent" and isinstance(item, Agent):
-            if item.is_from_plugin and item.plugin_name:
-                return f"{item.plugin_name}:{item.name}"
-            return item.name
-        elif item_type == "mcp_server" and isinstance(item, MCPServer):
-            return item.name
-        return str(id(item))
 
     def toggle_spawn_mode(self) -> str:
         """Toggle between embedded and external spawn modes."""

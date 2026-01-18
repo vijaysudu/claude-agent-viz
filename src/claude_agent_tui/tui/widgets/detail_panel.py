@@ -14,38 +14,7 @@ from textual.widgets import Static, RichLog, Input
 
 from ...store.models import ToolUse, ToolStatus, Session, ConversationMessage, MessageRole
 from ...store.config_models import Skill, Hook, Command, Agent, MCPServer
-
-
-# Status display
-STATUS_DISPLAY = {
-    ToolStatus.PENDING: (" Pending", "yellow"),
-    ToolStatus.RUNNING: (" Running", "blue"),
-    ToolStatus.COMPLETED: (" Completed", "green"),
-    ToolStatus.ERROR: (" Error", "red"),
-}
-
-
-def get_language_from_path(file_path: str) -> str:
-    """Determine the language/lexer from a file path."""
-    from pathlib import Path
-    suffix_map = {
-        ".py": "python",
-        ".js": "javascript",
-        ".ts": "typescript",
-        ".tsx": "tsx",
-        ".jsx": "jsx",
-        ".json": "json",
-        ".yaml": "yaml",
-        ".yml": "yaml",
-        ".md": "markdown",
-        ".html": "html",
-        ".css": "css",
-        ".sh": "bash",
-        ".rs": "rust",
-        ".go": "go",
-    }
-    path = Path(file_path)
-    return suffix_map.get(path.suffix.lower(), "text")
+from ...constants import get_status_display, get_language_from_path, get_config_icon
 
 
 class DetailPanel(Container):
@@ -368,7 +337,8 @@ class DetailPanel(Container):
     def _render_tool(self, tool: ToolUse, header: Static, content: RichLog) -> None:
         """Render tool content."""
         # Update header
-        status_text, status_color = STATUS_DISPLAY.get(
+        status_display = get_status_display()
+        status_text, status_color = status_display.get(
             tool.status, ("Unknown", "white")
         )
         header_text = f" {tool.tool_name}  [{status_color}]{status_text}[/]"
@@ -526,7 +496,7 @@ class DetailPanel(Container):
         content.clear()
 
         # Header
-        icon = "" if skill.is_from_plugin else ""
+        icon = get_config_icon("skill", skill.is_from_plugin)
         header.update(f"{icon} Skill: {skill.display_name}")
 
         # Skill info
@@ -659,7 +629,7 @@ class DetailPanel(Container):
         content.clear()
 
         # Header
-        icon = "" if agent.is_from_plugin else ""
+        icon = get_config_icon("agent", agent.is_from_plugin)
         header.update(f"{icon} Agent: {agent.display_name}")
 
         # Agent info

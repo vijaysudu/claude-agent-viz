@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
+from typing import Callable
 
 
 @dataclass
@@ -19,6 +20,104 @@ class SpawnResult:
     error: str | None = None
     master_fd: int | None = None
     slave_fd: int | None = None
+
+
+# Type alias for terminal spawn functions
+TerminalSpawnFunc = Callable[[str, str], None]
+
+
+def _spawn_warp(cwd: str, command: str) -> None:
+    """Spawn in Warp terminal using AppleScript."""
+    script = f'''
+    tell application "Warp"
+        activate
+        tell application "System Events" to tell process "Warp"
+            keystroke "t" using command down
+            delay 0.3
+            keystroke "cd {cwd} && {command}"
+            keystroke return
+        end tell
+    end tell
+    '''
+    subprocess.Popen(["osascript", "-e", script])
+
+
+def _spawn_terminal_app(cwd: str, command: str) -> None:
+    """Spawn in macOS Terminal.app using AppleScript."""
+    script = f'tell application "Terminal" to do script "cd {cwd} && {command}"'
+    subprocess.Popen(["osascript", "-e", script])
+
+
+def _spawn_iterm2(cwd: str, command: str) -> None:
+    """Spawn in iTerm2 using AppleScript."""
+    script = f'''
+    tell application "iTerm"
+        create window with default profile
+        tell current session of current window
+            write text "cd {cwd} && {command}"
+        end tell
+    end tell
+    '''
+    subprocess.Popen(["osascript", "-e", script])
+
+
+def _spawn_wezterm(cwd: str, command: str) -> None:
+    """Spawn in WezTerm terminal."""
+    if command == "claude":
+        subprocess.Popen(["wezterm", "start", "--cwd", cwd, "--", "claude"])
+    else:
+        subprocess.Popen(["wezterm", "start", "--cwd", cwd, "--", "sh", "-c", command])
+
+
+def _spawn_kitty(cwd: str, command: str) -> None:
+    """Spawn in Kitty terminal."""
+    if command == "claude":
+        subprocess.Popen(["kitty", "--directory", cwd, "claude"])
+    else:
+        subprocess.Popen(["kitty", "--directory", cwd, "sh", "-c", command])
+
+
+def _spawn_alacritty(cwd: str, command: str) -> None:
+    """Spawn in Alacritty terminal."""
+    if command == "claude":
+        subprocess.Popen(["alacritty", "--working-directory", cwd, "-e", "claude"])
+    else:
+        subprocess.Popen(["alacritty", "--working-directory", cwd, "-e", "sh", "-c", command])
+
+
+def _spawn_gnome_terminal(cwd: str, command: str) -> None:
+    """Spawn in GNOME Terminal."""
+    if command == "claude":
+        subprocess.Popen(["gnome-terminal", f"--working-directory={cwd}", "--", "claude"])
+    else:
+        subprocess.Popen(["gnome-terminal", f"--working-directory={cwd}", "--", "sh", "-c", command])
+
+
+def _spawn_konsole(cwd: str, command: str) -> None:
+    """Spawn in KDE Konsole."""
+    if command == "claude":
+        subprocess.Popen(["konsole", "--workdir", cwd, "-e", "claude"])
+    else:
+        subprocess.Popen(["konsole", "--workdir", cwd, "-e", "sh", "-c", command])
+
+
+def _spawn_xterm(cwd: str, command: str) -> None:
+    """Spawn in xterm."""
+    subprocess.Popen(["xterm", "-e", f"cd {cwd} && {command}"])
+
+
+# Terminal spawner registry
+TERMINAL_SPAWNERS: dict[str, TerminalSpawnFunc] = {
+    "Warp.app": _spawn_warp,
+    "Terminal.app": _spawn_terminal_app,
+    "iterm2": _spawn_iterm2,
+    "wezterm": _spawn_wezterm,
+    "kitty": _spawn_kitty,
+    "alacritty": _spawn_alacritty,
+    "gnome-terminal": _spawn_gnome_terminal,
+    "konsole": _spawn_konsole,
+    "xterm": _spawn_xterm,
+}
 
 
 def get_available_terminals() -> list[str]:
@@ -54,11 +153,12 @@ def get_available_terminals() -> list[str]:
     return available
 
 
-def spawn_session(cwd: str, terminal: str | None = None) -> SpawnResult:
-    """Spawn a new Claude session in an external terminal.
+def _spawn_in_terminal(cwd: str, command: str, terminal: str | None = None) -> SpawnResult:
+    """Spawn a command in an external terminal.
 
     Args:
         cwd: Working directory for the session.
+        command: Command to execute (e.g., "claude" or "claude --resume <id>").
         terminal: Terminal emulator to use (auto-detect if None).
 
     Returns:
@@ -82,84 +182,35 @@ def spawn_session(cwd: str, terminal: str | None = None) -> SpawnResult:
             )
         terminal = available[0]
 
+    # Get the spawner function for this terminal
+    spawner = TERMINAL_SPAWNERS.get(terminal)
+    if spawner is None:
+        return SpawnResult(
+            success=False,
+            error=f"Unsupported terminal: {terminal}",
+        )
+
     try:
-        if terminal == "Warp.app":
-            # Warp terminal (preferred on macOS)
-            script = f'''
-            tell application "Warp"
-                activate
-                tell application "System Events" to tell process "Warp"
-                    keystroke "t" using command down
-                    delay 0.3
-                    keystroke "cd {cwd} && claude"
-                    keystroke return
-                end tell
-            end tell
-            '''
-            subprocess.Popen(["osascript", "-e", script])
-
-        elif terminal == "Terminal.app" or (sys.platform == "darwin" and terminal is None):
-            # macOS Terminal.app
-            script = f'tell application "Terminal" to do script "cd {cwd} && claude"'
-            subprocess.Popen(["osascript", "-e", script])
-
-        elif terminal == "iterm2":
-            # iTerm2
-            script = f'''
-            tell application "iTerm"
-                create window with default profile
-                tell current session of current window
-                    write text "cd {cwd} && claude"
-                end tell
-            end tell
-            '''
-            subprocess.Popen(["osascript", "-e", script])
-
-        elif terminal == "wezterm":
-            # Don't use start_new_session=True - it causes orphaned processes
-            # when the terminal window closes
-            subprocess.Popen(
-                ["wezterm", "start", "--cwd", cwd, "--", "claude"],
-            )
-
-        elif terminal == "kitty":
-            subprocess.Popen(
-                ["kitty", "--directory", cwd, "claude"],
-            )
-
-        elif terminal == "alacritty":
-            subprocess.Popen(
-                ["alacritty", "--working-directory", cwd, "-e", "claude"],
-            )
-
-        elif terminal == "gnome-terminal":
-            subprocess.Popen(
-                ["gnome-terminal", f"--working-directory={cwd}", "--", "claude"],
-            )
-
-        elif terminal == "konsole":
-            subprocess.Popen(
-                ["konsole", "--workdir", cwd, "-e", "claude"],
-            )
-
-        elif terminal == "xterm":
-            subprocess.Popen(
-                ["xterm", "-e", f"cd {cwd} && claude"],
-            )
-
-        else:
-            return SpawnResult(
-                success=False,
-                error=f"Unsupported terminal: {terminal}",
-            )
-
+        spawner(cwd, command)
         return SpawnResult(success=True)
-
     except Exception as e:
         return SpawnResult(
             success=False,
             error=str(e),
         )
+
+
+def spawn_session(cwd: str, terminal: str | None = None) -> SpawnResult:
+    """Spawn a new Claude session in an external terminal.
+
+    Args:
+        cwd: Working directory for the session.
+        terminal: Terminal emulator to use (auto-detect if None).
+
+    Returns:
+        SpawnResult indicating success or failure.
+    """
+    return _spawn_in_terminal(cwd, "claude", terminal)
 
 
 def spawn_resume_session(
@@ -177,104 +228,7 @@ def spawn_resume_session(
     Returns:
         SpawnResult indicating success or failure.
     """
-    # Find claude executable
-    claude_path = shutil.which("claude")
-    if not claude_path:
-        return SpawnResult(
-            success=False,
-            error="'claude' command not found in PATH",
-        )
-
-    # Auto-detect terminal if not specified
-    if terminal is None:
-        available = get_available_terminals()
-        if not available:
-            return SpawnResult(
-                success=False,
-                error="No supported terminal emulator found",
-            )
-        terminal = available[0]
-
-    # Build the command
-    claude_cmd = f"claude --resume {session_id}"
-
-    try:
-        if terminal == "Warp.app":
-            # Warp terminal (preferred on macOS)
-            script = f'''
-            tell application "Warp"
-                activate
-                tell application "System Events" to tell process "Warp"
-                    keystroke "t" using command down
-                    delay 0.3
-                    keystroke "cd {cwd} && {claude_cmd}"
-                    keystroke return
-                end tell
-            end tell
-            '''
-            subprocess.Popen(["osascript", "-e", script])
-
-        elif terminal == "Terminal.app" or (sys.platform == "darwin" and terminal is None):
-            # macOS Terminal.app
-            script = f'tell application "Terminal" to do script "cd {cwd} && {claude_cmd}"'
-            subprocess.Popen(["osascript", "-e", script])
-
-        elif terminal == "iterm2":
-            # iTerm2
-            script = f'''
-            tell application "iTerm"
-                create window with default profile
-                tell current session of current window
-                    write text "cd {cwd} && {claude_cmd}"
-                end tell
-            end tell
-            '''
-            subprocess.Popen(["osascript", "-e", script])
-
-        elif terminal == "wezterm":
-            # Don't use start_new_session=True - it causes orphaned processes
-            subprocess.Popen(
-                ["wezterm", "start", "--cwd", cwd, "--", "sh", "-c", claude_cmd],
-            )
-
-        elif terminal == "kitty":
-            subprocess.Popen(
-                ["kitty", "--directory", cwd, "sh", "-c", claude_cmd],
-            )
-
-        elif terminal == "alacritty":
-            subprocess.Popen(
-                ["alacritty", "--working-directory", cwd, "-e", "sh", "-c", claude_cmd],
-            )
-
-        elif terminal == "gnome-terminal":
-            subprocess.Popen(
-                ["gnome-terminal", f"--working-directory={cwd}", "--", "sh", "-c", claude_cmd],
-            )
-
-        elif terminal == "konsole":
-            subprocess.Popen(
-                ["konsole", "--workdir", cwd, "-e", "sh", "-c", claude_cmd],
-            )
-
-        elif terminal == "xterm":
-            subprocess.Popen(
-                ["xterm", "-e", f"cd {cwd} && {claude_cmd}"],
-            )
-
-        else:
-            return SpawnResult(
-                success=False,
-                error=f"Unsupported terminal: {terminal}",
-            )
-
-        return SpawnResult(success=True)
-
-    except Exception as e:
-        return SpawnResult(
-            success=False,
-            error=str(e),
-        )
+    return _spawn_in_terminal(cwd, f"claude --resume {session_id}", terminal)
 
 
 def spawn_embedded(cwd: str) -> SpawnResult:

@@ -10,6 +10,7 @@ from textual.widgets import OptionList
 from textual.widgets.option_list import Option
 
 from ...store.models import Session
+from ...utils import format_relative_time
 
 
 class SessionList(OptionList):
@@ -95,42 +96,10 @@ class SessionList(OptionList):
 
         # Relative time if available
         if session.start_time:
-            time_str = self._format_relative_time(session.start_time)
+            time_str = format_relative_time(session.start_time)
             text.append(f" | {time_str}", style="dim")
 
         return text
-
-    def _format_relative_time(self, timestamp: str) -> str:
-        """Format a timestamp as relative time.
-
-        Args:
-            timestamp: ISO format timestamp.
-
-        Returns:
-            Relative time string like '2h ago'.
-        """
-        from datetime import datetime
-
-        try:
-            # Parse ISO timestamp
-            dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-            now = datetime.now(dt.tzinfo) if dt.tzinfo else datetime.now()
-            delta = now - dt
-
-            seconds = delta.total_seconds()
-            if seconds < 60:
-                return "just now"
-            elif seconds < 3600:
-                mins = int(seconds / 60)
-                return f"{mins}m ago"
-            elif seconds < 86400:
-                hours = int(seconds / 3600)
-                return f"{hours}h ago"
-            else:
-                days = int(seconds / 86400)
-                return f"{days}d ago"
-        except Exception:
-            return ""
 
     def on_option_list_option_highlighted(
         self, event: OptionList.OptionHighlighted

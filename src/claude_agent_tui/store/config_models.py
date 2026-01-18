@@ -18,11 +18,16 @@ class Skill:
     plugin_name: str | None = None
 
     @property
-    def display_name(self) -> str:
-        """Get display-friendly name."""
+    def id(self) -> str:
+        """Get unique identifier for this skill."""
         if self.is_from_plugin and self.plugin_name:
             return f"{self.plugin_name}:{self.name}"
         return self.name
+
+    @property
+    def display_name(self) -> str:
+        """Get display-friendly name."""
+        return self.id
 
 
 @dataclass
@@ -33,6 +38,13 @@ class Hook:
     command: str
     matcher: str | None = None
     timeout: int | None = None
+
+    @property
+    def id(self) -> str:
+        """Get unique identifier for this hook."""
+        if self.matcher:
+            return f"{self.hook_type}:{self.matcher}"
+        return f"{self.hook_type}:{hash(self.command) % 10000}"
 
     @property
     def display_name(self) -> str:
@@ -50,6 +62,11 @@ class Command:
     description: str
     file_path: Path
     content: str
+
+    @property
+    def id(self) -> str:
+        """Get unique identifier for this command."""
+        return self.name
 
     @property
     def display_name(self) -> str:
@@ -72,11 +89,16 @@ class Agent:
     color: str | None = None
 
     @property
-    def display_name(self) -> str:
-        """Get display-friendly name."""
+    def id(self) -> str:
+        """Get unique identifier for this agent."""
         if self.is_from_plugin and self.plugin_name:
             return f"{self.plugin_name}:{self.name}"
         return self.name
+
+    @property
+    def display_name(self) -> str:
+        """Get display-friendly name."""
+        return self.id
 
 
 @dataclass
@@ -88,6 +110,11 @@ class MCPServer:
     args: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     cwd: str | None = None
+
+    @property
+    def id(self) -> str:
+        """Get unique identifier for this MCP server."""
+        return self.name
 
     @property
     def display_name(self) -> str:

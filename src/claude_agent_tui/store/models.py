@@ -7,6 +7,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from ..constants import get_tool_file_path, generate_tool_display_name
+
 
 class ToolStatus(Enum):
     """Status of a tool execution."""
@@ -56,40 +58,11 @@ class ToolUse:
 
     def get_file_path(self) -> str | None:
         """Get the file path if this tool operates on a file."""
-        if self.tool_name in ("Read", "Edit", "Write"):
-            return self.input_params.get("file_path")
-        elif self.tool_name == "Grep":
-            return self.input_params.get("path")
-        elif self.tool_name == "Glob":
-            return self.input_params.get("path")
-        return None
+        return get_tool_file_path(self.tool_name, self.input_params)
 
     def get_display_name(self) -> str:
         """Get a display-friendly name for this tool use."""
-        if self.tool_name == "Read":
-            path = self.input_params.get("file_path", "")
-            return f"Read: {Path(path).name if path else 'file'}"
-        elif self.tool_name == "Edit":
-            path = self.input_params.get("file_path", "")
-            return f"Edit: {Path(path).name if path else 'file'}"
-        elif self.tool_name == "Write":
-            path = self.input_params.get("file_path", "")
-            return f"Write: {Path(path).name if path else 'file'}"
-        elif self.tool_name == "Bash":
-            cmd = self.input_params.get("command", "")
-            parts = cmd.split() if cmd else []
-            short_cmd = parts[0] if parts else "command"
-            return f"Bash: {short_cmd}"
-        elif self.tool_name == "Grep":
-            pattern = self.input_params.get("pattern", "")[:20]
-            return f"Grep: {pattern}"
-        elif self.tool_name == "Glob":
-            pattern = self.input_params.get("pattern", "")[:20]
-            return f"Glob: {pattern}"
-        elif self.tool_name == "Task":
-            desc = self.input_params.get("description", "")[:20]
-            return f"Task: {desc}"
-        return self.tool_name
+        return generate_tool_display_name(self.tool_name, self.input_params)
 
 
 @dataclass

@@ -9,29 +9,8 @@ from textual.message import Message
 from textual.widgets import OptionList
 from textual.widgets.option_list import Option
 
-from ...store.models import ToolUse, ToolStatus
-
-
-# Status indicators
-STATUS_ICONS = {
-    ToolStatus.PENDING: ("", "yellow"),
-    ToolStatus.RUNNING: ("", "blue"),
-    ToolStatus.COMPLETED: ("", "green"),
-    ToolStatus.ERROR: ("", "red"),
-}
-
-# Tool type icons
-TOOL_ICONS = {
-    "Read": "",
-    "Edit": "",
-    "Write": "",
-    "Bash": "",
-    "Grep": "",
-    "Glob": "",
-    "Task": "",
-    "WebFetch": "",
-    "AskUserQuestion": "",
-}
+from ...store.models import ToolUse
+from ...constants import get_status_icons, get_tool_icon
 
 
 class ToolList(OptionList):
@@ -89,11 +68,12 @@ class ToolList(OptionList):
         text = Text()
 
         # Status icon
-        icon, color = STATUS_ICONS.get(tool.status, ("", "white"))
+        status_icons = get_status_icons()
+        icon, color = status_icons.get(tool.status, ("", "white"))
         text.append(f"{icon} ", style=color)
 
         # Tool icon
-        tool_icon = TOOL_ICONS.get(tool.tool_name, "")
+        tool_icon = get_tool_icon(tool.tool_name)
         text.append(f"{tool_icon} ", style="dim")
 
         # Tool name

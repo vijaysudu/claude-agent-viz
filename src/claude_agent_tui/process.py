@@ -5,8 +5,15 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
+
+from .constants import (
+    MAX_RECENT_SESSION_FILES,
+    ACTIVE_SESSION_THRESHOLD_SECONDS,
+    DEFAULT_SUBPROCESS_TIMEOUT,
+)
 
 
 @dataclass
@@ -34,7 +41,7 @@ def find_claude_processes() -> list[ClaudeProcess]:
             ["ps", "-eo", "pid,command"],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=DEFAULT_SUBPROCESS_TIMEOUT,
         )
 
         if result.returncode != 0:
@@ -87,7 +94,7 @@ def get_process_cwd(pid: int) -> str | None:
             ["lsof", "-p", str(pid), "-Fn"],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=DEFAULT_SUBPROCESS_TIMEOUT,
         )
 
         for line in result.stdout.split("\n"):
@@ -135,7 +142,7 @@ def extract_session_id(pid: int, cwd: str) -> str | None:
         # by looking at the project path in the filename
         cwd_path = Path(cwd) if cwd else None
 
-        for jsonl_file in jsonl_files[:10]:  # Check recent files
+        for jsonl_file in jsonl_files[:MAX_RECENT_SESSION_FILES]:
             # The parent directory name often contains project info
             project_dir = jsonl_file.parent.name
 
@@ -244,12 +251,11 @@ def is_session_running(session_path: Path) -> bool:
     Returns:
         True if session appears to be running.
     """
-    # Check if file was modified very recently (within last 30 seconds)
+    # Check if file was modified very recently
     try:
-        import time
         mtime = session_path.stat().st_mtime
         age = time.time() - mtime
-        if age < 30:
+        if age < ACTIVE_SESSION_THRESHOLD_SECONDS:
             return True
     except OSError:
         pass

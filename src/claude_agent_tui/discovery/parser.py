@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..constants import generate_tool_preview
+
 
 @dataclass
 class ParsedToolUse:
@@ -31,39 +33,7 @@ class ParsedToolUse:
     def __post_init__(self):
         """Generate preview from input params."""
         if not self.preview:
-            self.preview = self._generate_preview()
-
-    def _generate_preview(self) -> str:
-        """Generate a short preview based on tool type."""
-        params = self.input_params
-
-        if self.tool_name == "Read":
-            return params.get("file_path", "")[:80]
-        elif self.tool_name == "Edit":
-            path = params.get("file_path", "")
-            return f"{path} (edit)"[:80]
-        elif self.tool_name == "Write":
-            path = params.get("file_path", "")
-            return f"{path} (write)"[:80]
-        elif self.tool_name == "Bash":
-            cmd = params.get("command", "")
-            return cmd[:80] if len(cmd) <= 80 else cmd[:77] + "..."
-        elif self.tool_name == "Grep":
-            pattern = params.get("pattern", "")
-            path = params.get("path", ".")
-            return f"{pattern} in {path}"[:80]
-        elif self.tool_name == "Glob":
-            pattern = params.get("pattern", "")
-            return pattern[:80]
-        elif self.tool_name == "Task":
-            desc = params.get("description", "")
-            return desc[:80]
-        else:
-            # Generic preview
-            if params:
-                first_val = str(list(params.values())[0])
-                return first_val[:80] if len(first_val) <= 80 else first_val[:77] + "..."
-            return ""
+            self.preview = generate_tool_preview(self.tool_name, self.input_params)
 
 
 @dataclass
