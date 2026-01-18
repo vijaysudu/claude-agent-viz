@@ -111,7 +111,6 @@ Config tab shows collapsible sections:
 ### Runtime Dependencies
 - **Python 3.10+**
 - **Textual >= 0.50.0** - Terminal UI framework
-- **textual-terminal >= 0.3.0** - Embedded terminal widget for PTY sessions
 - **Rich >= 13.0.0** - Text formatting and syntax highlighting
 - **watchdog >= 4.0.0** - File system monitoring for live session updates
 

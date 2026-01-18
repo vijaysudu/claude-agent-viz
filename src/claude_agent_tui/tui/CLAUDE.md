@@ -227,7 +227,6 @@ claude-tui -d /path/to/sessions
 **Screens (`./screens/`):**
 - `NewSessionScreen` - Dialog for creating new sessions
 - `TerminalScreen` - Full-screen terminal view
-- `EmbeddedTerminalScreen` - Embedded terminal in main view
 - `ResumeTerminalScreen` - Terminal for resuming sessions
 
 ## Architecture Notes

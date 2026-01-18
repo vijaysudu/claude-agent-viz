@@ -66,19 +66,6 @@ Modal dialog for entering and validating a project directory before starting a n
 - Returns `str` (validated path) on success, `None` on cancel
 - `_validate_and_start()` - Internal validation and path resolution
 
-### `embedded_terminal_screen.py` - External Terminal Integration (Deprecated)
-Alternative implementation using the `textual-terminal` package for embedding Claude sessions.
-
-**Status**: Not exported in `__init__.py`, appears to be deprecated or experimental
-
-**Key Features**:
-- Uses `textual-terminal.Terminal` widget if available
-- Graceful handling if textual-terminal is not installed
-- Builds shell commands to run `claude` CLI
-- Simpler implementation but less control over process lifecycle
-
-**Note**: This screen is not currently used in the main application. TerminalScreen and ResumeTerminalScreen use custom terminal widgets (ClaudeTerminal and ResumeTerminal) that provide better process management.
-
 ## Important Concepts
 
 ### Screen Types
@@ -183,7 +170,6 @@ def on_claude_terminal_session_ended(self, event):
   - `textual.widgets` - Header, Footer, Static, Input, Button
   - `textual.containers.Container` - Layout container
   - `textual.binding.Binding` - Keyboard shortcuts
-- `textual-terminal` (optional) - Used by EmbeddedTerminalScreen only
 
 ### System Dependencies
 
@@ -252,10 +238,8 @@ All terminal screens share:
 
 1. **Unified Terminal Screen**: TerminalScreen and ResumeTerminalScreen share 90% of their code. Could be refactored into a single screen with a mode parameter.
 
-2. **EmbeddedTerminalScreen**: Currently not used. Could be removed or updated to use the same pattern as TerminalScreen.
+2. **Session History Integration**: NewSessionScreen could show recently used directories or suggest directories based on existing sessions.
 
-3. **Session History Integration**: NewSessionScreen could show recently used directories or suggest directories based on existing sessions.
+3. **Path Auto-completion**: NewSessionScreen input could provide tab-completion for directory paths.
 
-4. **Path Auto-completion**: NewSessionScreen input could provide tab-completion for directory paths.
-
-5. **Session Templates**: NewSessionScreen could offer preset configurations or templates for common project types.
+4. **Session Templates**: NewSessionScreen could offer preset configurations or templates for common project types.
