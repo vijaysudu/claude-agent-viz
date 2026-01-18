@@ -103,6 +103,35 @@ class DetailPanel(Container):
         yield RichLog(highlight=True, markup=True, wrap=True, id="detail-content")
         yield Input(placeholder="Press Enter to resume this session in a new terminal", id="reply-input")
 
+    def show_welcome(self) -> None:
+        """Display welcome/base state."""
+        self._current_tool = None
+        self._current_session = None
+
+        header = self.query_one("#detail-header", Static)
+        content = self.query_one("#detail-content", RichLog)
+        content.clear()
+
+        self.remove_class("session-view")
+
+        header.update(" Claude Agent Visualizer")
+
+        content.write(Text("Welcome", style="bold cyan"))
+        content.write("")
+        content.write("Select a session from the list to view details.")
+        content.write("")
+        content.write(Text("─" * 40, style="dim"))
+        content.write("")
+        content.write(Text("Keyboard Shortcuts", style="bold cyan"))
+        content.write("")
+        content.write(Text.assemble(("n", "bold cyan"), (" - New session", "")))
+        content.write(Text.assemble(("c", "bold cyan"), (" - Resume selected session", "")))
+        content.write(Text.assemble(("k", "bold cyan"), (" - Kill selected session", "")))
+        content.write(Text.assemble(("r", "bold cyan"), (" - Refresh sessions", "")))
+        content.write(Text.assemble(("t", "bold cyan"), (" - Toggle spawn mode", "")))
+        content.write(Text.assemble(("ESC", "bold cyan"), (" - Go back / Deselect", "")))
+        content.write(Text.assemble(("q", "bold cyan"), (" - Quit", "")))
+
     def show_tool(self, tool: ToolUse | None) -> None:
         """Display tool details."""
         self._current_tool = tool

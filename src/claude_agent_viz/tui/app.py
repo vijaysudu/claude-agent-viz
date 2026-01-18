@@ -380,6 +380,14 @@ class ClaudeAgentVizApp(App):
         except Exception:
             pass
 
+    def _show_welcome(self) -> None:
+        """Show welcome/base state in the detail panel."""
+        try:
+            detail_panel = self.query_one("#detail-panel", DetailPanel)
+            detail_panel.show_welcome()
+        except Exception:
+            pass
+
     def on_session_list_session_selected(
         self, event: SessionList.SessionSelected
     ) -> None:
@@ -497,10 +505,16 @@ class ClaudeAgentVizApp(App):
                 self.notify("No running Claude sessions found", severity="information")
 
     def action_back_to_session(self) -> None:
-        """Go back to session view from tool view."""
+        """Go back: tool view → session view → base state."""
         if self.state.selected_tool_id:
+            # From tool view, go back to session view
             self.state.selected_tool_id = None
             self._show_session_details()
+        elif self.state.selected_session_id:
+            # From session view, go back to base state (nothing selected)
+            self.state.selected_session_id = None
+            self._update_tool_list()  # Clear tools list
+            self._show_welcome()
 
     def action_refresh(self) -> None:
         """Refresh the session list."""
