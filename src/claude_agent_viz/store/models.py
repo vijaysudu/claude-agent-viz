@@ -17,6 +17,27 @@ class ToolStatus(Enum):
     ERROR = "error"
 
 
+class MessageRole(Enum):
+    """Role of a conversation message."""
+
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+@dataclass
+class ConversationMessage:
+    """Represents a single message in the conversation."""
+
+    uuid: str
+    role: MessageRole
+    timestamp: str | None = None
+    text_content: str = ""  # Extracted text from the message
+    thinking_content: str = ""  # Thinking block content (assistant only)
+    tool_use_ids: list[str] = field(default_factory=list)  # Tool uses in this message
+    is_tool_result: bool = False  # Whether this contains tool results
+    raw_content: Any = None  # Original content for advanced rendering
+
+
 @dataclass
 class ToolUse:
     """Represents a single tool use in a session."""
@@ -78,6 +99,7 @@ class Session:
     session_id: str
     session_path: Path
     tool_uses: list[ToolUse] = field(default_factory=list)
+    messages: list[ConversationMessage] = field(default_factory=list)  # Full conversation
     message_count: int = 0
     start_time: str | None = None
     is_active: bool = False

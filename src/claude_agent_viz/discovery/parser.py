@@ -67,12 +67,27 @@ class ParsedToolUse:
 
 
 @dataclass
+class ParsedMessage:
+    """Represents a parsed conversation message."""
+
+    uuid: str
+    role: str  # "user" or "assistant"
+    timestamp: str | None = None
+    text_content: str = ""
+    thinking_content: str = ""
+    tool_use_ids: list[str] = field(default_factory=list)
+    is_tool_result: bool = False
+    raw_content: Any = None
+
+
+@dataclass
 class ParsedSession:
     """Represents a parsed Claude session."""
 
     session_id: str
     session_path: Path
     tool_uses: list[ParsedToolUse] = field(default_factory=list)
+    messages: list[ParsedMessage] = field(default_factory=list)  # Full conversation
     message_count: int = 0
     start_time: str | None = None
     summary: str | None = None  # First user message or task description
@@ -109,6 +124,7 @@ def parse_session(jsonl_path: Path) -> ParsedSession:
     """
     session_id = jsonl_path.stem
     tool_uses: list[ParsedToolUse] = []
+    messages: list[ParsedMessage] = []
     tool_use_map: dict[str, ParsedToolUse] = {}  # Map tool_use_id to ParsedToolUse
     message_count = 0
     start_time: str | None = None
@@ -129,6 +145,7 @@ def parse_session(jsonl_path: Path) -> ParsedSession:
 
             entry_type = entry.get("type")
             timestamp = entry.get("timestamp")
+            uuid = entry.get("uuid", "")
 
             if start_time is None and timestamp:
                 start_time = timestamp
@@ -154,88 +171,158 @@ def parse_session(jsonl_path: Path) -> ParsedSession:
             if entry_type in ("user", "assistant"):
                 message_count += 1
 
-            # Extract summary from first real user message
-            if entry_type == "user" and not first_user_message_found:
+            # Parse user messages
+            if entry_type == "user":
                 message = entry.get("message", {})
-                content_blocks = message.get("content", [])
+                content = message.get("content", "")
 
-                for block in content_blocks:
-                    # Skip tool_result blocks - they're not user messages
-                    if isinstance(block, dict) and block.get("type") == "tool_result":
+                # Handle string content directly
+                if isinstance(content, str):
+                    text_content = content.strip()
+                    is_tool_result = False
+
+                    # Skip meta messages and internal system tags
+                    if entry.get("isMeta"):
+                        continue
+                    # Skip messages that are just XML tags
+                    if text_content.startswith("<") and text_content.endswith(">"):
                         continue
 
-                    # Extract text from user message
-                    text = ""
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        text = block.get("text", "").strip()
-                    elif isinstance(block, str):
-                        text = block.strip()
+                    parsed_msg = ParsedMessage(
+                        uuid=uuid,
+                        role="user",
+                        timestamp=timestamp,
+                        text_content=text_content,
+                        raw_content=content,
+                    )
+                    messages.append(parsed_msg)
 
-                    if text:
-                        # Skip system tags
-                        if text.startswith("<"):
-                            continue
-                        # Skip continuation summaries
-                        if text.startswith("This session is being continued"):
-                            continue
-                        # Skip context window messages
-                        if "context window" in text.lower():
-                            continue
-                        # Skip very short messages (likely single chars or artifacts)
-                        if len(text) < 5:
-                            continue
+                    # Extract summary from first real user message
+                    if not first_user_message_found and text_content:
+                        if not text_content.startswith("<"):
+                            if not text_content.startswith("This session is being continued"):
+                                if "context window" not in text_content.lower():
+                                    if len(text_content) >= 5:
+                                        summary = text_content
+                                        first_user_message_found = True
 
-                        summary = text
-                        first_user_message_found = True
-                        break
+                # Handle list content (can contain text blocks or tool_result blocks)
+                elif isinstance(content, list):
+                    text_parts = []
+                    tool_result_ids = []
+                    is_tool_result = False
 
-            # Extract tool_use from assistant messages
+                    for block in content:
+                        if isinstance(block, dict):
+                            if block.get("type") == "text":
+                                text_parts.append(block.get("text", ""))
+                            elif block.get("type") == "tool_result":
+                                is_tool_result = True
+                                tool_use_id = block.get("tool_use_id", "")
+                                tool_result_ids.append(tool_use_id)
+                                is_error = block.get("is_error", False)
+                                result_content = block.get("content", [])
+
+                                # Extract text content from result
+                                result_text = ""
+                                for item in result_content:
+                                    if isinstance(item, dict) and item.get("type") == "text":
+                                        result_text += item.get("text", "")
+                                    elif isinstance(item, str):
+                                        result_text += item
+
+                                # Match to tool_use
+                                if tool_use_id in tool_use_map:
+                                    tool_use = tool_use_map[tool_use_id]
+                                    if is_error:
+                                        tool_use.is_error = True
+                                        tool_use.error_message = result_text
+                                    else:
+                                        tool_use.result_content = result_text
+                        elif isinstance(block, str):
+                            text_parts.append(block)
+
+                    text_content = "\n".join(text_parts).strip()
+
+                    # Skip meta messages
+                    if entry.get("isMeta"):
+                        continue
+
+                    # Only add if there's actual content (not just tool results)
+                    if text_content or not is_tool_result:
+                        # Skip messages that are just XML tags
+                        if text_content.startswith("<") and ">" in text_content:
+                            # Check if it's purely XML/system content
+                            cleaned = text_content.strip()
+                            if cleaned.startswith("<") and cleaned.endswith(">"):
+                                continue
+
+                        parsed_msg = ParsedMessage(
+                            uuid=uuid,
+                            role="user",
+                            timestamp=timestamp,
+                            text_content=text_content,
+                            is_tool_result=is_tool_result,
+                            tool_use_ids=tool_result_ids,
+                            raw_content=content,
+                        )
+                        messages.append(parsed_msg)
+
+                        # Extract summary from first real user message
+                        if not first_user_message_found and text_content:
+                            if not text_content.startswith("<"):
+                                if not text_content.startswith("This session is being continued"):
+                                    if "context window" not in text_content.lower():
+                                        if len(text_content) >= 5:
+                                            summary = text_content
+                                            first_user_message_found = True
+
+            # Parse assistant messages
             if entry_type == "assistant":
                 message = entry.get("message", {})
                 content_blocks = message.get("content", [])
 
-                for block in content_blocks:
-                    if isinstance(block, dict) and block.get("type") == "tool_use":
-                        tool_use_id = block.get("id", "")
-                        tool_name = block.get("name", "")
-                        input_params = block.get("input", {})
-
-                        parsed = ParsedToolUse(
-                            tool_use_id=tool_use_id,
-                            tool_name=tool_name,
-                            input_params=input_params,
-                            timestamp=timestamp,
-                        )
-                        tool_uses.append(parsed)
-                        tool_use_map[tool_use_id] = parsed
-
-            # Extract tool_result and match to tool_use
-            if entry_type == "user":
-                message = entry.get("message", {})
-                content_blocks = message.get("content", [])
+                text_parts = []
+                thinking_parts = []
+                tool_ids = []
 
                 for block in content_blocks:
-                    if isinstance(block, dict) and block.get("type") == "tool_result":
-                        tool_use_id = block.get("tool_use_id", "")
-                        is_error = block.get("is_error", False)
-                        content = block.get("content", [])
+                    if isinstance(block, dict):
+                        block_type = block.get("type")
+                        if block_type == "text":
+                            text_parts.append(block.get("text", ""))
+                        elif block_type == "thinking":
+                            thinking_parts.append(block.get("thinking", ""))
+                        elif block_type == "tool_use":
+                            tool_use_id = block.get("id", "")
+                            tool_name = block.get("name", "")
+                            input_params = block.get("input", {})
+                            tool_ids.append(tool_use_id)
 
-                        # Extract text content
-                        result_text = ""
-                        for item in content:
-                            if isinstance(item, dict) and item.get("type") == "text":
-                                result_text += item.get("text", "")
-                            elif isinstance(item, str):
-                                result_text += item
+                            parsed_tool = ParsedToolUse(
+                                tool_use_id=tool_use_id,
+                                tool_name=tool_name,
+                                input_params=input_params,
+                                timestamp=timestamp,
+                            )
+                            tool_uses.append(parsed_tool)
+                            tool_use_map[tool_use_id] = parsed_tool
 
-                        # Match to tool_use
-                        if tool_use_id in tool_use_map:
-                            tool_use = tool_use_map[tool_use_id]
-                            if is_error:
-                                tool_use.is_error = True
-                                tool_use.error_message = result_text
-                            else:
-                                tool_use.result_content = result_text
+                text_content = "\n".join(text_parts).strip()
+                thinking_content = "\n".join(thinking_parts).strip()
+
+                # Only add message if there's some content
+                if text_content or thinking_content or tool_ids:
+                    parsed_msg = ParsedMessage(
+                        uuid=uuid,
+                        role="assistant",
+                        timestamp=timestamp,
+                        text_content=text_content,
+                        thinking_content=thinking_content,
+                        tool_use_ids=tool_ids,
+                        raw_content=content_blocks,
+                    )
+                    messages.append(parsed_msg)
 
     # Try to get project path from jsonl path if not found in content
     # ~/.claude/projects/-Users-name-project/session.jsonl
@@ -249,6 +336,7 @@ def parse_session(jsonl_path: Path) -> ParsedSession:
         session_id=session_id,
         session_path=jsonl_path,
         tool_uses=tool_uses,
+        messages=messages,
         message_count=message_count,
         start_time=start_time,
         summary=summary,

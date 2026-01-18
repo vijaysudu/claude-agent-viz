@@ -11,7 +11,7 @@ from textual.containers import Container
 from textual.app import ComposeResult
 from textual.widgets import Static, RichLog
 
-from ...store.models import ToolUse, ToolStatus, Session
+from ...store.models import ToolUse, ToolStatus, Session, ConversationMessage, MessageRole
 
 
 # Status display
@@ -114,13 +114,28 @@ class DetailPanel(Container):
         self._render_session(session, header, content)
 
     def _render_session(self, session: Session, header: Static, content: RichLog) -> None:
-        """Render session content."""
+        """Render session content with full conversation view."""
         # Update header
         header_text = f" Session: {session.display_name}"
         if session.is_active:
             header_text += " [green](active)[/green]"
         header.update(header_text)
 
+        # Build a tool map for quick lookup
+        tool_map: dict[str, ToolUse] = {}
+        for tool in session.tool_uses:
+            tool_map[tool.tool_use_id] = tool
+
+        # Render the full conversation
+        if session.messages:
+            for msg in session.messages:
+                self._render_message(msg, content, tool_map)
+        else:
+            # Fallback to old view if no messages parsed
+            self._render_session_summary(session, content)
+
+    def _render_session_summary(self, session: Session, content: RichLog) -> None:
+        """Render session summary (fallback when no messages available)."""
         # Session info
         content.write(Text("Session Information", style="bold cyan"))
         content.write("")
@@ -174,6 +189,110 @@ class DetailPanel(Container):
         content.write(Text("─" * 40, style="dim"))
         content.write("")
         content.write(Text("Select a tool from the list to view details", style="dim italic"))
+
+    def _render_message(
+        self,
+        msg: ConversationMessage,
+        content: RichLog,
+        tool_map: dict[str, ToolUse],
+    ) -> None:
+        """Render a single conversation message."""
+        if msg.role == MessageRole.USER:
+            self._render_user_message(msg, content)
+        else:
+            self._render_assistant_message(msg, content, tool_map)
+
+    def _render_user_message(self, msg: ConversationMessage, content: RichLog) -> None:
+        """Render a user message."""
+        if not msg.text_content:
+            return
+
+        # User message header
+        content.write(Text("╭─ User ", style="bold blue") + Text("─" * 32, style="blue"))
+
+        # Message content
+        for line in msg.text_content.split("\n"):
+            content.write(Text("│ ", style="blue") + Text(line))
+
+        content.write(Text("╰" + "─" * 40, style="blue"))
+        content.write("")
+
+    def _render_assistant_message(
+        self,
+        msg: ConversationMessage,
+        content: RichLog,
+        tool_map: dict[str, ToolUse],
+    ) -> None:
+        """Render an assistant message."""
+        # Skip if no content at all
+        if not msg.text_content and not msg.thinking_content and not msg.tool_use_ids:
+            return
+
+        # Assistant message header
+        content.write(Text("╭─ Claude ", style="bold green") + Text("─" * 30, style="green"))
+
+        # Thinking content (collapsible)
+        if msg.thinking_content:
+            thinking_preview = msg.thinking_content[:100]
+            if len(msg.thinking_content) > 100:
+                thinking_preview += "..."
+            content.write(Text("│ ", style="green") + Text("💭 ", style="dim") + Text(thinking_preview, style="dim italic"))
+
+        # Text content
+        if msg.text_content:
+            for line in msg.text_content.split("\n"):
+                content.write(Text("│ ", style="green") + Text(line))
+
+        # Tool uses in this message
+        if msg.tool_use_ids:
+            content.write(Text("│", style="green"))
+            for tool_id in msg.tool_use_ids:
+                tool = tool_map.get(tool_id)
+                if tool:
+                    self._render_tool_compact(tool, content)
+
+        content.write(Text("╰" + "─" * 40, style="green"))
+        content.write("")
+
+    def _render_tool_compact(self, tool: ToolUse, content: RichLog) -> None:
+        """Render a compact tool use view."""
+        # Tool icon and name
+        status_icon = "✓" if tool.status == ToolStatus.COMPLETED else "✗"
+        status_color = "green" if tool.status == ToolStatus.COMPLETED else "red"
+
+        tool_header = Text("│  ", style="green")
+        tool_header.append(f"[{status_color}]{status_icon}[/] ", style=status_color)
+        tool_header.append(f"{tool.tool_name}", style="bold yellow")
+
+        # Add preview info
+        if tool.tool_name == "Read":
+            path = tool.input_params.get("file_path", "")
+            tool_header.append(f" {path}", style="dim")
+        elif tool.tool_name == "Edit":
+            path = tool.input_params.get("file_path", "")
+            tool_header.append(f" {path}", style="dim")
+        elif tool.tool_name == "Write":
+            path = tool.input_params.get("file_path", "")
+            tool_header.append(f" {path}", style="dim")
+        elif tool.tool_name == "Bash":
+            cmd = tool.input_params.get("command", "")[:50]
+            tool_header.append(f" $ {cmd}", style="dim")
+        elif tool.tool_name == "Grep":
+            pattern = tool.input_params.get("pattern", "")[:30]
+            tool_header.append(f" /{pattern}/", style="dim")
+        elif tool.tool_name == "Glob":
+            pattern = tool.input_params.get("pattern", "")[:30]
+            tool_header.append(f" {pattern}", style="dim")
+        elif tool.tool_name == "Task":
+            desc = tool.input_params.get("description", "")[:30]
+            tool_header.append(f" {desc}", style="dim")
+
+        content.write(tool_header)
+
+        # Show error if any
+        if tool.error_message:
+            error_preview = tool.error_message[:100].replace("\n", " ")
+            content.write(Text("│    ", style="green") + Text(f"Error: {error_preview}", style="red dim"))
 
     def _render_tool(self, tool: ToolUse, header: Static, content: RichLog) -> None:
         """Render tool content."""

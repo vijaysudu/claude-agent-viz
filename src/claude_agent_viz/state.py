@@ -8,8 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from .discovery.parser import ParsedSession, ParsedToolUse, parse_session
-from .store.models import Session, ToolUse, ToolStatus
+from .discovery.parser import ParsedSession, ParsedToolUse, ParsedMessage, parse_session
+from .store.models import Session, ToolUse, ToolStatus, ConversationMessage, MessageRole
 
 
 def get_current_session_ids() -> dict[str, str]:
@@ -247,6 +247,7 @@ def convert_parsed_session(
             If None, will be fetched automatically.
     """
     tool_uses = [convert_parsed_tool_use(t) for t in parsed.tool_uses]
+    messages = [convert_parsed_message(m) for m in parsed.messages]
 
     # Detect if session is active based on running Claude process
     # A session is active if there's a Claude instance running in its project directory
@@ -272,6 +273,7 @@ def convert_parsed_session(
         session_id=parsed.session_id,
         session_path=parsed.session_path,
         tool_uses=tool_uses,
+        messages=messages,
         message_count=parsed.message_count,
         start_time=parsed.start_time,
         summary=parsed.summary,
@@ -293,4 +295,20 @@ def convert_parsed_tool_use(parsed: ParsedToolUse) -> ToolUse:
         timestamp=parsed.timestamp,
         result_content=parsed.result_content,
         error_message=parsed.error_message,
+    )
+
+
+def convert_parsed_message(parsed: ParsedMessage) -> ConversationMessage:
+    """Convert a ParsedMessage to a ConversationMessage model."""
+    role = MessageRole.USER if parsed.role == "user" else MessageRole.ASSISTANT
+
+    return ConversationMessage(
+        uuid=parsed.uuid,
+        role=role,
+        timestamp=parsed.timestamp,
+        text_content=parsed.text_content,
+        thinking_content=parsed.thinking_content,
+        tool_use_ids=parsed.tool_use_ids,
+        is_tool_result=parsed.is_tool_result,
+        raw_content=parsed.raw_content,
     )
