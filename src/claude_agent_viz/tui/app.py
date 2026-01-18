@@ -377,6 +377,25 @@ class ClaudeAgentVizApp(App):
         self.state.select_tool(event.tool_use_id)
         self._update_detail_panel()
 
+    def on_detail_panel_reply_submitted(
+        self, event: DetailPanel.ReplySubmitted
+    ) -> None:
+        """Handle reply submission from detail panel."""
+        session = self.state.selected_session
+        if not session:
+            return
+
+        # Get the project path for the session
+        cwd = session.project_path or os.getcwd()
+
+        # Open terminal screen with the initial message
+        from .screens.resume_terminal_screen import ResumeTerminalScreen
+        self.push_screen(ResumeTerminalScreen(
+            session_id=event.session_id,
+            cwd=cwd,
+            initial_message=event.message,
+        ))
+
     def action_new_session(self) -> None:
         """Spawn a new Claude session."""
         if self.state.spawn_mode == "embedded":

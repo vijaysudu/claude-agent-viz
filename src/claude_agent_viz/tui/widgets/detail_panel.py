@@ -9,7 +9,8 @@ from rich.syntax import Syntax
 from rich.text import Text
 from textual.containers import Container
 from textual.app import ComposeResult
-from textual.widgets import Static, RichLog
+from textual.message import Message
+from textual.widgets import Static, RichLog, Input
 
 from ...store.models import ToolUse, ToolStatus, Session, ConversationMessage, MessageRole
 
@@ -55,6 +56,7 @@ class DetailPanel(Container):
         width: 100%;
         border: solid $primary;
         padding: 0;
+        layout: vertical;
     }
 
     DetailPanel #detail-header {
@@ -69,7 +71,26 @@ class DetailPanel(Container):
         scrollbar-gutter: stable;
         border: none;
     }
+
+    DetailPanel #reply-input {
+        dock: bottom;
+        height: 3;
+        border-top: solid $primary;
+        display: none;
+    }
+
+    DetailPanel.session-view #reply-input {
+        display: block;
+    }
     """
+
+    class ReplySubmitted(Message):
+        """Message sent when user submits a reply."""
+
+        def __init__(self, session_id: str, message: str) -> None:
+            super().__init__()
+            self.session_id = session_id
+            self.message = message
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -80,6 +101,7 @@ class DetailPanel(Container):
         """Compose the widget with persistent children."""
         yield Static("Select a session or tool", id="detail-header")
         yield RichLog(highlight=True, markup=True, wrap=True, id="detail-content")
+        yield Input(placeholder="Type a message to continue this session... (Enter to send)", id="reply-input")
 
     def show_tool(self, tool: ToolUse | None) -> None:
         """Display tool details."""
@@ -89,9 +111,13 @@ class DetailPanel(Container):
         content = self.query_one("#detail-content", RichLog)
         content.clear()
 
+        # Hide reply input when viewing tools
+        self.remove_class("session-view")
+
         if tool is None:
             if self._current_session:
                 self._render_session(self._current_session, header, content)
+                self.add_class("session-view")
             else:
                 header.update("Select a tool to view details")
             return
@@ -109,9 +135,25 @@ class DetailPanel(Container):
 
         if session is None:
             header.update("Select a session to view details")
+            self.remove_class("session-view")
             return
 
         self._render_session(session, header, content)
+        # Show reply input for session view
+        self.add_class("session-view")
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle reply input submission."""
+        if event.input.id == "reply-input" and self._current_session:
+            message = event.value.strip()
+            if message:
+                event.input.value = ""
+                self.post_message(
+                    self.ReplySubmitted(
+                        session_id=self._current_session.session_id,
+                        message=message,
+                    )
+                )
 
     def _render_session(self, session: Session, header: Static, content: RichLog) -> None:
         """Render session content with full conversation view."""

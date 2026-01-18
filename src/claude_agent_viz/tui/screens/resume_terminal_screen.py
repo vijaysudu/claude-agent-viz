@@ -51,6 +51,7 @@ class ResumeTerminalScreen(Screen):
         self,
         session_id: str,
         cwd: str | None = None,
+        initial_message: str | None = None,
         name: str | None = None,
         id: str | None = None,
         classes: str | None = None,
@@ -60,6 +61,7 @@ class ResumeTerminalScreen(Screen):
         Args:
             session_id: The session ID to resume.
             cwd: Working directory for the session.
+            initial_message: Optional message to send after session starts.
             name: Screen name.
             id: Screen ID.
             classes: CSS classes.
@@ -67,6 +69,7 @@ class ResumeTerminalScreen(Screen):
         super().__init__(name=name, id=id, classes=classes)
         self.session_id = session_id
         self.cwd = cwd or os.getcwd()
+        self.initial_message = initial_message
         self._terminal: ResumeTerminal | None = None
         self._interrupt_count = 0
         self._last_interrupt_time = 0.0
@@ -75,7 +78,11 @@ class ResumeTerminalScreen(Screen):
         """Compose the screen."""
         yield Header()
         with Container(classes="screen-container"):
-            yield ResumeTerminal(session_id=self.session_id, cwd=self.cwd)
+            yield ResumeTerminal(
+                session_id=self.session_id,
+                cwd=self.cwd,
+                initial_message=self.initial_message,
+            )
         yield Static(
             f"[bold]Resuming Session[/bold] | {self.session_id[:8]}... | ESC=exit | Ctrl+C x2=force",
             classes="status-bar",

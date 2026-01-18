@@ -72,6 +72,7 @@ class ResumeTerminal(Container):
         self,
         session_id: str,
         cwd: str | None = None,
+        initial_message: str | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize the resume terminal.
@@ -79,16 +80,19 @@ class ResumeTerminal(Container):
         Args:
             session_id: The session ID to resume.
             cwd: Working directory for the Claude session.
+            initial_message: Optional message to send after session starts.
         """
         super().__init__(**kwargs)
         self.session_id = session_id
         self.cwd = cwd or os.getcwd()
+        self.initial_message = initial_message
         self._master_fd: int | None = None
         self._slave_fd: int | None = None
         self._pid: int | None = None
         self._running = False
         self._output_log: RichLog | None = None
         self._input: Input | None = None
+        self._initial_message_sent = False
 
     def compose(self) -> ComposeResult:
         """Compose the terminal widget."""
@@ -179,6 +183,24 @@ class ResumeTerminal(Container):
 
             # Post message about session start
             self.app.call_from_thread(self.post_message, self.SessionStarted(pid))
+
+            # Send initial message after a delay if provided
+            if self.initial_message and not self._initial_message_sent:
+                import time
+                time.sleep(1.5)  # Wait for Claude to fully initialize
+                if self._running and self._master_fd is not None:
+                    try:
+                        message_to_send = self.initial_message + "\n"
+                        os.write(self._master_fd, message_to_send.encode("utf-8"))
+                        self._initial_message_sent = True
+                        # Echo the input
+                        if self._output_log:
+                            self.app.call_from_thread(
+                                self._output_log.write,
+                                f"[green]> {self.initial_message}[/green]"
+                            )
+                    except OSError:
+                        pass
 
             # Start reading output
             self._read_output_sync()
