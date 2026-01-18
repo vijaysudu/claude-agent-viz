@@ -1,4 +1,4 @@
-# Claude Agent Visualizer
+# Claude Agent TUI Visualizer
 
 A terminal UI for visualizing and interacting with Claude Code agent sessions.
 
